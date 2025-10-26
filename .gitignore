@@ -7,3 +7,4 @@ results/
 *.mp4
 *.egg-info/
 *__pycache__/
+sam2/

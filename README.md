@@ -73,3 +73,10 @@ You can run the trajectory estimation script from the project directory with:
 CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_est
 imation --config-name base
 ```
+
+## 5. Cloning SAM
+
+```bash
+git clone https://github.com/facebookresearch/sam2.git && cd sam2
+uv pip install -e .
+```
