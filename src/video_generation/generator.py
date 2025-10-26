@@ -101,7 +101,7 @@ class VideoGenerator:
             self.generate_video(prompt, video_folder)
 
 
-@hydra.main(version_base=None, config_path="../../config/video_generation", config_name="config")
+@hydra.main()
 def main(cfg: OmegaConf) -> None:
     OmegaConf.resolve(cfg)
     generator = VideoGenerator(cfg)

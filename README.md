@@ -42,3 +42,22 @@ You should now be able to a test inference script for `Trace Anything`:
 ```bash
 uv run tests/test_trace_anything.py
 ```
+
+
+## 3. Generating Videos with Wan 2.1
+
+The first part of the pipeline is for generating sample videos with WAN 2.1.
+
+You can find the `hydra` config in the `config/video_generation` directory,
+ to specify the generation parameters (and the location of prompts).
+
+Prompts are located in the `prompts/video_generation` directory.
+
+Wan2.1 uses a `negative_prompt.txt` file to specify what to not generate.
+
+You can run the video generation script from the project directory with:
+```bash
+CUDA_VISIBLE_DEVICES=5 uv run src/video_generation/generator.py --config-path ../../config/video_generation --config-name config.yaml
+```
+
+TODO: make this multiprocessed if multiple GPUs are available.
