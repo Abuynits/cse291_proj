@@ -1,6 +1,10 @@
 import os
 import torch
 from omegaconf import OmegaConf
+
+import sys, pathlib
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
+
 from TraceAnything.trace_anything.trace_anything import TraceAnything
 import numpy as np
 

@@ -13,7 +13,6 @@ from image_utils import *
 MAX_FRAMES = 40
 
 def process_single_video(video_path: str, output_dir: str, model, cfg: DictConfig, device: torch.device):
-    breakpoint()
     video_frames = load_video(video_path)
     views = process_video(video_frames, device)
 
@@ -67,7 +66,6 @@ def process_single_video(video_path: str, output_dir: str, model, cfg: DictConfi
     return preds
 
 
-@hydra.main(version_base=None, config_path="../../config/trajectory_estimation", config_name="base")
 @hydra.main()
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
