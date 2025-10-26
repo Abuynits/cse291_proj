@@ -1,0 +1,8 @@
+output/
+*.pt
+*.ckpt
+.venv
+.vscode/
+*.mp4
+*.egg-info/
+*__pycache__/
