@@ -20,10 +20,12 @@ dependencies = [
     "opencv-python>=4.11.0.86",
     "pdbpp>=0.11.7",
     "pillow>=12.0.0",
+    "pycocotools>=2.0.10",
+    "supervision>=0.26.1",
     "torch>=2.9.0",
     "torchaudio>=2.9.0",
     "torchvision>=0.24.0",
-    "transformers>=4.57.1",
+    "transformers==4.45.0",
     "viser>=1.0.15",
     "xfuser>=0.4.4",
 ]

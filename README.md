@@ -62,7 +62,28 @@ CUDA_VISIBLE_DEVICES=5 uv run src/video_generation/generator.py --config-path ..
 
 TODO: make this multiprocessed if multiple GPUs are available.
 
-## 4. Estimating Trajectories with Trace Anything
+## 4. Configuring SAM
+
+```bash
+git clone https://github.com/facebookresearch/sam2.git && cd sam2
+uv pip install -e .
+```
+
+You can now verify that SAM2 is working by running:
+```bash
+uv run tests/test_sam.py
+``` 
+
+## 5. Configuring Grounded-SAM
+
+IMPORTANT: Make sure that you have installed SAM2 above.
+
+You can now verify that Grounded-SAM is working by running:
+```bash
+uv run tests/test_grounded_sam.py
+```
+
+## 6. Estimating Trajectories with Trace Anything
 
 Similarly to video generation, the trajectory estimation script uses `hydra`
 for configuration. The config files are located in the `config/trajectory_estimation` directory.
@@ -72,11 +93,4 @@ You can run the trajectory estimation script from the project directory with:
 ```bash
 CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_est
 imation --config-name base
-```
-
-## 5. Cloning SAM
-
-```bash
-git clone https://github.com/facebookresearch/sam2.git && cd sam2
-uv pip install -e .
 ```
