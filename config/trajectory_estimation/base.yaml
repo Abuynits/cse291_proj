@@ -1,0 +1,21 @@
+defaults:
+  - model: eval
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+  - _self_
+
+paths:
+  input_dir: "${hydra:runtime.cwd}/tmp"
+  trace_anything: "${hydra:runtime.cwd}/TraceAnything/checkpoints/trace_anything.pt"
+
+processing:
+  downsample_factor: 2 # Factor by which to downsample video frames (1 = no downsampling)
+
+output:
+  subdir: traj_data  # Subdirectory name for storing results
+  overwrite: true # Clears existing output directory before processing if true
+
+hydra:  
+  output_subdir: null  
+  run:  
+    dir: .

@@ -61,3 +61,15 @@ CUDA_VISIBLE_DEVICES=5 uv run src/video_generation/generator.py --config-path ..
 ```
 
 TODO: make this multiprocessed if multiple GPUs are available.
+
+## 4. Estimating Trajectories with Trace Anything
+
+Similarly to video generation, the trajectory estimation script uses `hydra`
+for configuration. The config files are located in the `config/trajectory_estimation` directory.
+
+You can run the trajectory estimation script from the project directory with:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_est
+imation --config-name base
+```
