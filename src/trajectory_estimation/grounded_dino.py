@@ -9,7 +9,7 @@ from supervision.draw.color import ColorPalette
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
 
-class GroundedSAMModel:
+class GroundedDinoModel:
     def __init__(self, cfg, device):
         # model_cfg = SAM2_MODEL_CONFIG
         self.sam2_predictor = SAM2ImagePredictor.from_pretrained(cfg.sam2_model_id)

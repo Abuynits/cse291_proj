@@ -5,6 +5,7 @@ import shutil
 import trimesh
 import hydra
 from omegaconf import DictConfig, OmegaConf
+import json
 
 # Register OmegaConf resolver
 OmegaConf.register_new_resolver("eval", eval, replace=True)
@@ -105,7 +106,7 @@ def compute_pointclouds_from_preds(preds, masks, t_step=0.025, conf_percentile =
     return pointclouds_per_t
 
 
-def process_single_video(video_path: str, output_dir: str, trace_anything, grounded_sam:GroundedSAMModel, cfg: DictConfig, device: torch.device):
+def process_single_video(video_path: str, output_dir: str, trace_anything, grounded_sam:GroundedSAMModel, cfg: DictConfig, device: torch.device, target_object: str):
     video_frames = load_video(video_path)
     raw_views, views = process_video(video_frames, device)
 
@@ -115,11 +116,12 @@ def process_single_video(video_path: str, output_dir: str, trace_anything, groun
         raw_views = raw_views[::cfg.processing.downsample_factor]
 
     # only support up to 40 frames (TraceAnything limitation)
-    while len(views) > 20:
+    while len(views) > 40:
         views = views[::2]
         raw_views = raw_views[::2]
 
-    masks = grounded_sam.get_grounded_dino_masks_for_views(raw_views, 'racecar.')
+    # use the per-video target object prompt from metadata
+    masks = grounded_sam.get_grounded_dino_masks_for_views(raw_views, target_object)
     indices_with_object = [i for i, res in enumerate(masks) if res['found_object']]
     print(f"found {len(indices_with_object)}/{len(masks)} frames with the target object")
 
@@ -133,8 +135,10 @@ def process_single_video(video_path: str, output_dir: str, trace_anything, groun
     ms_per_view = (dt / max(1, len(views))) * 1000.0
     print(f"done | {dt:.2f}s total | {ms_per_view:.1f} ms/view")
 
+    pcls_dir = os.path.join(output_dir, "pcl")
     masks_dir = os.path.join(output_dir, "masks")
     images_dir = os.path.join(output_dir, "images")
+    os.makedirs(pcls_dir, exist_ok=True)
     os.makedirs(masks_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
 
@@ -147,10 +151,10 @@ def process_single_video(video_path: str, output_dir: str, trace_anything, groun
     masks = [masks[i] for i in range(len(masks)) if masks[i]['found_object']]
     pcls = compute_pointclouds_from_preds(preds, masks)
     for i, (_, mask, pcl, view) in enumerate(zip(preds, masks, pcls, raw_views)):
-        cv2.imwrite(os.path.join(images_dir, f"{i:03d}_mask.png"), np.asarray(mask['annotated_frame']))
+        cv2.imwrite(os.path.join(masks_dir, f"{i:03d}_mask.png"), np.asarray(mask['annotated_frame']))
         cv2.imwrite(os.path.join(images_dir, f"{i:03d}.png"), np.asarray(view))
         mesh = trimesh.points.PointCloud(pcl['points'], colors=pcl['colors'])
-        mesh.export(os.path.join(images_dir, f"{i:03d}_pcl.glb"))
+        mesh.export(os.path.join(pcls_dir, f"{i:03d}_pcl.glb"))
 
 
 @hydra.main(version_base=None, config_path="../../config/trajectory_estimation", config_name="base")
@@ -162,6 +166,22 @@ def main(cfg: DictConfig) -> None:
     video_files = fetch_files_in_dir(cfg)
 
     for video_file in video_files:
+        # require a metadata.json in the same directory as the video
+        metadata_path = video_file.parent / "metadata.json"
+        if not metadata_path.exists():
+            print(f"Skipping {video_file}: metadata.json not found in {video_file.parent}")
+            continue
+        try:
+            with open(metadata_path, 'r') as f:
+                meta = json.load(f)
+        except Exception as e:
+            print(f"Skipping {video_file}: failed to read metadata.json ({e})")
+            continue
+        target_object = meta.get('target_object')
+        if not target_object:
+            print(f"Skipping {video_file}: 'target_object' key missing in metadata.json")
+            continue
+
         output_dir = video_file.parent / cfg.output.subdir
         if output_dir.exists():
             if cfg.output.overwrite:
@@ -171,7 +191,7 @@ def main(cfg: DictConfig) -> None:
                 continue
         
         os.makedirs(output_dir, exist_ok=True)
-        process_single_video(str(video_file), str(output_dir), trace_anything, grounded_sam, cfg, device)
+        process_single_video(str(video_file), str(output_dir), trace_anything, grounded_sam, cfg, device, target_object)
 
 
 if __name__ == "__main__":
