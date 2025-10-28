@@ -4,6 +4,10 @@ defaults:
   - override hydra/job_logging: disabled
   - _self_
 
+grounding_sam:
+  model_id: "IDEA-Research/grounding-dino-tiny"
+  sam2_model_id: "facebook/sam2-hiera-large"
+
 paths:
   input_dir: "${hydra:runtime.cwd}/tmp"
   trace_anything: "${hydra:runtime.cwd}/TraceAnything/checkpoints/trace_anything.pt"

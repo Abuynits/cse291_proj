@@ -65,7 +65,7 @@ TODO: make this multiprocessed if multiple GPUs are available.
 ## 4. Configuring SAM
 
 ```bash
-git clone https://github.com/facebookresearch/sam2.git && cd sam2
+git clone https://github.com/facebookresearch/sam2.git && mv sam2 fb_sam2 && cd sam2
 uv pip install -e .
 ```
 
