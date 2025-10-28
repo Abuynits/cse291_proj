@@ -1,4 +1,10 @@
 {
-    "car_in_tunnel": "A sleek silver sports car driving smoothly through a minimal, softly lit tunnel environment. Static camera with cinematic composition. The car leaves subtle glowing trajectory trails showing its motion path. Photorealistic lighting, reflections on the car's surface, volumetric light rays, and 8K high detail.",
-    "dancing_robot": "A shiny metallic humanoid robot performing a fluid contemporary dance in a dark studio with spotlights. The robot's movements leave trails of light in the air. High contrast lighting, dramatic shadows, and realistic metal reflections."
+    "car_in_tunnel": {
+        "prompt": "A sleek silver sports car driving smoothly through a minimal, softly lit tunnel environment. Static camera with cinematic composition. The car leaves subtle glowing trajectory trails showing its motion path. Photorealistic lighting, reflections on the car's surface, volumetric light rays, and 8K high detail.",
+        "target_object": "sports car."
+    },
+    "dancing_robot": {
+        "prompt": "A shiny metallic humanoid robot performing a fluid contemporary dance in a dark studio with spotlights. The robot's movements leave trails of light in the air. High contrast lighting, dramatic shadows, and realistic metal reflections.",
+        "target_object": "humanoid robot."
+    }
 }

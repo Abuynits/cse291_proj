@@ -54,7 +54,7 @@ class VideoGenerator:
             negative_prompt = f.read().strip()
         return negative_prompt
 
-    def generate_video(self, prompt: str, output_folder: Path) -> None:
+    def generate_video(self, prompt_data: dict, output_folder: Path) -> None:
         resolution = self.cfg.video.quality.resolution
         if resolution not in self.cfg.video.quality.dimensions:
             raise ValueError(f"Resolution '{resolution}' not found in configuration dimensions.")
@@ -63,7 +63,7 @@ class VideoGenerator:
         negative_prompt = self.load_negative_prompt(self.cfg.model.negative_prompt_path)
 
         output = self.pipe(
-            prompt=prompt,
+            prompt=prompt_data["prompt"],
             negative_prompt=negative_prompt,
             height=dimensions.height,
             width=dimensions.width,
@@ -79,7 +79,8 @@ class VideoGenerator:
         export_to_video(generated_video, str(video_path), fps=self.cfg.video.fps)
 
         metadata = {
-            "prompt": prompt,
+            "prompt": prompt_data["prompt"],
+            "target_object": prompt_data["target_object"],
             "negative_prompt": negative_prompt,
             "model_config": self.cfg
         }
@@ -95,13 +96,13 @@ class VideoGenerator:
         output_dir = Path(self.cfg.paths.output_dir) / f"{self.cfg.paths.output_prefix}_{timestamp}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        for prompt_name, prompt in prompts.items():
+        for prompt_name, prompt_data in prompts.items():
             print(f"Generating video for prompt: {prompt_name}")
             video_folder = output_dir / prompt_name
-            self.generate_video(prompt, video_folder)
+            self.generate_video(prompt_data, video_folder)
 
 
-@hydra.main()
+@hydra.main(version_base=None, config_path="../../config/video_generation", config_name="config")
 def main(cfg: OmegaConf) -> None:
     OmegaConf.resolve(cfg)
     generator = VideoGenerator(cfg)
