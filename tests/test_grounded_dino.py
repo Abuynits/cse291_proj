@@ -15,13 +15,10 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 GROUNDING_MODEL = "IDEA-Research/grounding-dino-tiny"
 TEXT_PROMPT = "corgi."
 IMG_PATH = Path(__file__).parent.parent / "TraceAnything/examples/input/corgi/000.png"
-# SAM2_CHECKPOINT = args.sam2_checkpoint
-# SAM2_MODEL_CONFIG = args.sam2_model_config
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OUTPUT_DIR = Path(IMG_PATH.parent)
 DUMP_JSON_RESULTS = False
 
-# create output directory
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # environment settings
@@ -33,12 +30,7 @@ if torch.cuda.is_available() and torch.cuda.get_device_properties(0).major >= 8:
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
-# build SAM2 image predictor
-# sam2_checkpoint = SAM2_CHECKPOINT
-# model_cfg = SAM2_MODEL_CONFIG
 sam2_predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2-hiera-large")
-# sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=DEVICE)
-# sam2_predictor = SAM2ImagePredictor(sam2_model)
 
 # build grounding dino from huggingface
 model_id = GROUNDING_MODEL

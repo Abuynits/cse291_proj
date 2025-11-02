@@ -22,10 +22,7 @@ You should now be able to a test inference script for `Wan 2.1`:
 uv run tests/test_wan.py
 ```
 
-
-## 2. Running Trace Anything:
-
-Clone / Download Trace Anything repo:
+## 2. Running Trace Anything
 
 Download Trace Anything model weights:
 ```bash
@@ -62,23 +59,10 @@ CUDA_VISIBLE_DEVICES=5 uv run src/video_generation/generator.py --config-path ..
 
 TODO: make this multiprocessed if multiple GPUs are available.
 
-## 4. Configuring SAM
-
-```bash
-git clone https://github.com/facebookresearch/sam2.git && mv sam2 fb_sam2 && cd sam2
-uv pip install -e .
-```
-
-You can now verify that SAM2 is working by running:
-```bash
-uv run tests/test_sam.py
-``` 
-
 ## 5. Configuring Grounded-SAM
 
-IMPORTANT: Make sure that you have installed SAM2 above.
-
-You can now verify that Grounded-SAM is working by running:
+Grounded-SAM is available from huggingface. verify that it is working and that 
+you have installed sam2 correctly through:
 ```bash
 uv run tests/test_grounded_sam.py
 ```
@@ -91,6 +75,5 @@ for configuration. The config files are located in the `config/trajectory_estima
 You can run the trajectory estimation script from the project directory with:
 
 ```bash
-CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_est
-imation --config-name base
+CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_estimation --config-name base
 ```

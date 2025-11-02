@@ -12,7 +12,7 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 from model_utils import *
 from image_utils import *
-from grounded_sam import GroundedSAMModel
+from grounded_sam import GroundedSamModel
 
 from hydra.core.global_hydra import GlobalHydra
 GlobalHydra.instance().clear()
@@ -106,7 +106,7 @@ def compute_pointclouds_from_preds(preds, masks, t_step=0.025, conf_percentile =
     return pointclouds_per_t
 
 
-def process_single_video(video_path: str, output_dir: str, trace_anything, grounded_sam:GroundedSAMModel, cfg: DictConfig, device: torch.device, target_object: str):
+def process_single_video(video_path: str, output_dir: str, trace_anything, grounded_sam:GroundedSamModel, cfg: DictConfig, device: torch.device, target_object: str):
     video_frames = load_video(video_path)
     raw_views, views = process_video(video_frames, device)
 
@@ -161,7 +161,7 @@ def process_single_video(video_path: str, output_dir: str, trace_anything, groun
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    grounded_sam = GroundedSAMModel(cfg=cfg.grounding_sam, device=device)
+    grounded_sam = GroundedSamModel(cfg=cfg.grounding_sam, device=device)
     trace_anything = build_model_from_cfg(cfg.model, ckpt_path=cfg.paths.trace_anything, device=device)
     video_files = fetch_files_in_dir(cfg)
 
