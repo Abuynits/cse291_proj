@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
@@ -73,18 +74,18 @@ class VideoGenerator:
 
         generated_video = output[0]
 
-        output_folder.mkdir(parents=True, exist_ok=True)
+        os.makedirs(output_folder, exist_ok=True)
 
-        video_path = output_folder / "video.mp4"
+        video_path = os.path.join(output_folder, "video.mp4")
         export_to_video(generated_video, str(video_path), fps=self.cfg.video.fps)
 
         metadata = {
             "prompt": prompt_data["prompt"],
             "target_object": prompt_data["target_object"],
             "negative_prompt": negative_prompt,
-            "model_config": self.cfg
+            "model_config": OmegaConf.to_container(self.cfg)
         }
-        metadata_path = output_folder / "metadata.json"
+        metadata_path = os.path.join(output_folder, "metadata.json")
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=4)
 
@@ -93,12 +94,12 @@ class VideoGenerator:
     def generate_all_videos(self) -> None:
         prompts = self.load_prompts()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = Path(self.cfg.paths.output_dir) / f"{self.cfg.paths.output_prefix}_{timestamp}"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = os.path.join(self.cfg.paths.output_dir, f"{self.cfg.paths.output_prefix}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
 
         for prompt_name, prompt_data in prompts.items():
             print(f"Generating video for prompt: {prompt_name}")
-            video_folder = output_dir / prompt_name
+            video_folder = os.path.join(output_dir, prompt_name)
             self.generate_video(prompt_data, video_folder)
 
 

@@ -11,13 +11,12 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
 class GroundedSamModel:
     def __init__(self, cfg, device):
+        print(f"Initializing GroundedSamModel with cfg: {cfg.sam2_model_id}")
         self.sam2_predictor = SAM2ImagePredictor.from_pretrained(cfg.sam2_model_id)
         # build grounding dino from huggingface
         self.processor = AutoProcessor.from_pretrained(cfg.model_id)
         self.device = device
         self.grounding_model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model_id).to(device)
-
-
 
     def get_grounded_dino_masks_for_views(self, views, target_object):
         mask_results = []
@@ -31,7 +30,7 @@ class GroundedSamModel:
             results = self.processor.post_process_grounded_object_detection(
                 outputs,
                 inputs.input_ids,
-                box_threshold=0.4,
+                threshold=0.4,
                 text_threshold=0.3,
                 target_sizes=[pil_image.size[::-1]]
             )
