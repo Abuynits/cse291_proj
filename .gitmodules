@@ -1,3 +1,0 @@
-[submodule "third_party/DiffusionReg"]
-	path = third_party/DiffusionReg
-	url = https://github.com/Jiang-HB/DiffusionReg.git

@@ -1,10 +1,34 @@
 {
-    "car_in_tunnel": {
-        "prompt": "A sleek silver sports car driving smoothly through a minimal, softly lit tunnel environment. Static camera with cinematic composition. The car leaves subtle glowing trajectory trails showing its motion path. Photorealistic lighting, reflections on the car's surface, volumetric light rays, and 8K high detail.",
-        "target_object": "sports car."
+    "hovering_drone": {
+        "prompt": "A small quadcopter drone flying smoothly from left to right across a modern city skyline at sunset. The drone maintains a steady altitude parallel to the image plane. Static camera, soft cinematic lighting, detailed reflections on the drone’s body, and subtle motion blur from its movement.",
+        "target_object": "drone."
     },
-    "dancing_robot": {
-        "prompt": "A shiny metallic humanoid robot performing a fluid contemporary dance in a dark studio with spotlights. The robot's movements leave trails of light in the air. High contrast lighting, dramatic shadows, and realistic metal reflections.",
-        "target_object": "humanoid robot."
+    "sliding_crate": {
+        "prompt": "A heavy wooden crate sliding steadily across a warehouse floor from one side of the frame to the other. The camera remains fixed as the crate moves parallel to the image plane. Realistic surface friction, dust trails, and warm industrial lighting.",
+        "target_object": "wooden crate."
+    },
+    "gliding_boat": {
+        "prompt": "A sleek white motorboat gliding smoothly across a calm lake surface, moving parallel to the camera view. Gentle ripples and reflections follow the hull. Static camera with golden-hour lighting and detailed water dynamics.",
+        "target_object": "motorboat."
+    },
+    "walking_robot_dog": {
+        "prompt": "A metallic quadruped robot walking in a straight line across a minimalist concrete platform. The movement is parallel to the image plane. Subtle mechanical motion, realistic reflections, and diffused daylight lighting.",
+        "target_object": "robot dog."
+    },
+    "driving_truck": {
+        "prompt": "A red semi-truck driving horizontally through an empty desert highway. The truck remains fully visible as it moves parallel to the image plane. Realistic motion blur, heat haze, and sunlight reflections on metal surfaces.",
+        "target_object": "truck."
+    },
+    "skiing_snowmobile": {
+        "prompt": "A black snowmobile gliding swiftly across a snowy plain, moving laterally across the frame. The snow sprays gently behind it. Static camera, crisp lighting, and clear motion direction parallel to the image plane.",
+        "target_object": "snowmobile."
+    },
+    "rolling_suitcase": {
+        "prompt": "A hard-shell suitcase being pulled smoothly across an airport terminal floor. The suitcase moves laterally across the image plane with subtle reflections on the polished floor and diffused interior lighting.",
+        "target_object": "suitcase."
+    },
+    "floating_submarine": {
+        "prompt": "A small autonomous submarine cruising slowly through clear blue water, moving parallel to the camera’s plane. Light rays filter from above, soft caustics dance on its hull, and bubbles trail gently behind.",
+        "target_object": "submarine."
     }
 }

@@ -28,13 +28,10 @@ class PipelineContext:
         paths["pointclouds_dir"] = os.path.join(paths["main_output_dir"], "5_pointclouds")
         paths["registration_output_dir"] = os.path.join(paths["main_output_dir"], "6_registration")
         
-        # Ensure all directories are created
         for key, path in paths.items():
-            # We only want to create directories, not parent paths of files
             if key.endswith("dir") or key.endswith("folder"):
                 os.makedirs(path, exist_ok=True)
         
-        # Special case for the trace anything scene sub-directory
         os.makedirs(os.path.join(paths["trace_output_dir"], scene_dir_name), exist_ok=True)
 
         return paths

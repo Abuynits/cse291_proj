@@ -4,19 +4,23 @@ import gc
 import torch
 from .pipeline import PipelineComponent, PipelineContext
 
+# INPUT:  2_frames dir at self.context.paths["frames_scene_dir"]
+# OUTPUT: output.pt saved to self.context.paths["trace_output_dir"]
+#         (4_trace_anything_output/scene_dir_name/output.pt)
+
 class PointTracer(PipelineComponent):
     def __init__(self, context: PipelineContext):
         super().__init__(context)
 
     @property
     def short_name(self) -> str:
-        return "tracer"
+        return "tracing"
 
 class TraceAnythingTracer(PointTracer):
     def run(self):
         print("--- Preparing for Tracing: Releasing VRAM from previous steps ---")
 
-        # Offload and delete models from previous steps
+        # Offload and delete models from previous steps (sometimes necessary)
         if self.context.data.get('video_generator'):
             print("Deleting video generation model...")
             del self.context.data['video_generator']

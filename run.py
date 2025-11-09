@@ -6,7 +6,7 @@ import json
 # Add third-party directories to Python's path
 sys.path.append(os.path.join(os.getcwd(), "third_party/DiffusionReg"))
 
-# --- Import all available components ---
+# === Add imports here === # 
 # To add a new component (e.g., a new registration method), just import it here.
 # Most likely, only need to change out video model or point registration method.
 from src.pipeline import (
@@ -51,19 +51,29 @@ def main():
     # these are: ["videogeneration", "segmentation", "tracing", "pointclouds", "registration"]
     parser.add_argument("--start-at", type=str, default="videogeneration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to start from.")
     parser.add_argument("--end-at", type=str, default="registration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to end at.")
-
+    
     args = parser.parse_args()
+
     if args.video_prompt is not None:
         assert args.target_object is not None, "Error: Target object is required when video prompt is provided."
 
-    # Determine runs
     runs = None
-    if args.video_prompt is None and args.prompt_path and not os.path.exists(os.path.join("results", args.run_name)):
-        print(f"Loading runs from {args.prompt_path}…")
-        runs = json.load(open(args.prompt_path))
-        print(f"Found {len(runs)} runs in {args.prompt_path}:")
-        for run_key in runs.keys():
-            print(f"  - {run_key}")
+    if args.video_prompt is None and args.prompt_path:
+        # if empty prompt, check the prompt path json file
+        try:
+            print(f"Loading runs from {args.prompt_path}...")
+            runs = json.load(open(args.prompt_path))
+            print(f"Found {len(runs)} runs in {args.prompt_path}:")
+            for run_key in runs.keys():
+                print(f"- {run_key}")
+        except Exception as e:
+            # if doesn't exist, try to see if the args.run_name output exists previously
+            if os.path.exists(os.path.join("results", args.run_name)):
+                metadata = os.path.join("results", args.run_name, "1_video", "metadata.json")
+                with open(metadata, 'r') as f:
+                    meta = json.load(f)
+                # read prompt information from existing metadata
+                runs = { args.run_name: { "prompt": meta['prompt'], "target_object": meta['target_object'] } }
     else:
         runs = { args.run_name: { "prompt": args.video_prompt, "target_object": args.target_object } }
 
@@ -78,19 +88,18 @@ def main():
 
         pipeline = create_pipeline(run_key, args)
         start_component, end_component = get_partial_run_range_for_debug(pipeline, args)
-        if start_component and end_component:
-            pipeline.run(start_at=start_component, end_at=end_component)
+        start_component = start_component if start_component is not None else "videogeneration"
+        end_component = end_component if end_component is not None else "registration"
+        pipeline.run(start_at=start_component, end_at=end_component)
 
 
 # === Helpers ==== #
 def get_partial_run_range_for_debug(pipeline: Pipeline, args: argparse.Namespace) -> tuple[str, str]:
-    # The step names are now based on the 'short_name' property of the components
     all_component_short_names = [c.short_name for c in pipeline.components]
     
     start_step_arg = args.start_at.lower()
     end_step_arg = args.end_at.lower()
 
-    # Allow for partial matches (e.g., "video" for "videogeneration")
     start_component = next((name for name in all_component_short_names if name.startswith(start_step_arg)), None)
     end_component = next((name for name in all_component_short_names if name.startswith(end_step_arg)), None)
     

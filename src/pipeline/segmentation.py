@@ -7,6 +7,10 @@ import torch
 from .pipeline import PipelineComponent, PipelineContext
 from src.trajectory_estimation.grounded_sam import GroundedSamModel
 
+# INPUT:  video.mp4 from (1_video)
+# OUTPUT: framesdir at self.context.paths["masks_dir"] 
+#         + 3_masks + 3_masks_overlaid directories with masks
+
 # A simple config class to hold model IDs, to avoid hydra conflicts
 class GroundedSamConfig:
     sam2_model_id = "facebook/sam2-hiera-large"
@@ -43,7 +47,6 @@ class Segmentation(PipelineComponent):
     @property
     def short_name(self) -> str:
         return "segmentation"
-
 
 class SAM2Segmenter(Segmentation):
     def run(self):
