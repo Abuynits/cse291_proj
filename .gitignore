@@ -10,3 +10,4 @@ results/
 *sam2/
 *.jpg
 *.png
+build/
