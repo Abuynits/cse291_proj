@@ -137,3 +137,13 @@ To replace a module (particulary a registration method), simply do the following
 - Replace the corresponding module in the create_pipeline function
 
 This generalizes to the other PipelineComponents, but might only want to touch tracing and video_generation.
+
+## Visualization
+We can visualize any output in our results/ directory with the following command:
+```bash
+python visualize.py name_in_results_folder
+```
+This will launch a Viser application in which we are able to see the trajectories and the pointclouds at any timestep using the GUI.
+
+>[!TIP]
+> Trajectories not displaying? After marking the checkbox, press the rebuild button and then play the video.
