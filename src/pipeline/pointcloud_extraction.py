@@ -4,6 +4,9 @@ import torch
 from PIL import Image
 from .pipeline import PipelineComponent, PipelineContext
 
+# INPUT: output.py (from 4) and frames from (2)
+# OUTPUT: pointclouds (npy) saved to self.context.paths["pointclouds_dir"]
+
 def _resize_long_side(pil: Image.Image, long: int = 512) -> Image.Image:
     """A helper function to mimic the resizing in TraceAnything's infer.py"""
     w, h = pil.size
@@ -42,6 +45,7 @@ class PointCloudExtraction(PipelineComponent):
             if not os.path.exists(mask_path):
                 continue
             
+            # use our own masks from SAM2 rather than TraceAnything Otsu
             gtsam_mask_pil = Image.open(mask_path)
             original_frame_pil = Image.open(frame_paths[i])
 

@@ -3,6 +3,10 @@ from omegaconf import OmegaConf
 from .pipeline import PipelineComponent, PipelineContext
 from src.video_generation.generator import VideoGenerator
 
+# INPUT:  prompt, target object
+# OUTPUT: video.mp4, metadata.json saved to
+#         (self.context.paths['generated_video_path'])
+
 class VideoGeneration(PipelineComponent):
     def __init__(self, context: PipelineContext):
         super().__init__(context)
