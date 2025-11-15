@@ -86,7 +86,7 @@ def main():
         args.video_prompt = run_data["prompt"]
         args.target_object = run_data["target_object"]
 
-        pipeline = create_pipeline(run_key, args)
+        pipeline = create_pipeline(f"{args.run_name}_{run_key}", args)
         start_component, end_component = get_partial_run_range_for_debug(pipeline, args)
         start_component = start_component if start_component is not None else "videogeneration"
         end_component = end_component if end_component is not None else "registration"

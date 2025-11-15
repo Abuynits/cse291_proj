@@ -147,7 +147,6 @@ class DiffusionReg(Registration):
                 "individual_errors": registration_errors,
                 "average_absolute_error": float(avg_absolute_error),
                 "average_normalized_error": float(avg_normalized_error),
-                "note": "Normalized error is the absolute error divided by the bounding box diagonal."
             }
         else:
              error_summary = {"note": "No valid point cloud pairs found for registration."}
