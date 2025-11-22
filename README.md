@@ -2,14 +2,10 @@
 
 ## 0. Environment Setup
 
-We use UV for the development of this project. Install UV with:
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+We use UV for the development of this project. To set up the environment, run the following command in the project root directory:
 
-Then source the environment:
 ```bash
-uv sync
+source setup.sh
 ```
 
 <b>Notes</b>
