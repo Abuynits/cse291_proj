@@ -1,0 +1,60 @@
+basketball: A basketball bouncing on a concrete court, each bounce lower than the last due to energy loss, static camera viewing from courtside
+dice: Two six-sided dice tumbling across a wooden table surface, rolling to a stop, camera fixed overhead
+bowling_ball: A bowling ball rolling down a lane toward pins, maintaining constant velocity until impact, side view camera
+coin: A quarter spinning on a flat surface, wobbling and precessing before falling flat, top-down camera angle
+book: A hardcover book falling from a shelf and landing on the floor with pages closed, camera positioned at shelf level
+dominos: A line of dominoes falling in sequence, each knocking the next, camera facing the row perpendicularly
+tennis_ball: A tennis ball dropped from height, bouncing on pavement with decreasing amplitude, camera at ground level looking horizontally
+chess_piece: A wooden chess knight piece toppling over on a chessboard after being nudged, static frontal view
+can: An aluminum soda can rolling down a gentle incline, accelerating due to gravity, camera positioned at base of slope
+hockey_puck: A hockey puck sliding across ice, gradually decelerating due to friction, camera at rink level
+brick: A red brick sliding across a concrete surface after being pushed, friction bringing it to rest, side camera view
+baseball: A baseball rolling off a table edge and falling to the ground below, camera capturing both table and floor
+cube: A wooden cube tumbling down three stair steps, rotating and bouncing with each impact, camera facing stairs
+bottle: A glass bottle tipping over on a counter and rolling until stopped by edge, horizontal camera perspective
+marker: A cylindrical marker pen rolling across a tilted desk surface, accelerating downward, camera fixed above desk
+block: A metal block sliding down a frictionless ramp, uniform acceleration throughout descent, camera perpendicular to ramp
+stone: A smooth stone skipping across water surface, bouncing three times before sinking, shore-level static camera
+jar: A sealed glass jar rolling in a circular path on flat ground after being spun, camera overhead
+key: A metal key dropped onto a hard floor, bouncing and settling with metallic sound, camera at floor height
+pencil: A wooden pencil rolling off an angled surface and dropping straight down, side-view static camera position
+cylinder: A steel cylinder rolling down an inclined plane, rotational and translational motion combined, camera perpendicular to slope
+wrench: A metal wrench spinning on a workshop floor after being dropped, angular momentum conserved, overhead static view
+golf_ball: A golf ball struck across flat green grass, rolling with backspin gradually stopping, ground-level camera
+padlock: A brass padlock swinging as a pendulum on its shackle, periodic motion dampening over time, frontal camera
+plate: A ceramic dinner plate wobbling in decreasing circles on a table before settling flat, top-down camera
+hammer: A claw hammer sliding across a smooth garage floor after being pushed, friction decelerating it, side camera angle
+gear: A large metal gear rolling on its edge across concrete, gyroscopic stability maintaining upright motion, static side view
+magnet: A cylindrical magnet sliding down a metallic surface, magnetic forces affecting descent speed, camera facing surface
+tube: A cardboard tube rolling across linoleum floor, hollow cylinder dynamics in motion, camera at floor level
+scissors: Metal scissors falling from a counter, tumbling through air before clattering on tile, waist-height static camera
+spoon: A metal spoon spinning on a kitchen counter, precession motion visible before stopping, overhead fixed camera
+bolt: A steel hex bolt rolling in a straight line on a metal workbench, camera positioned at bench edge
+cue_ball: A white cue ball struck with topspin, curving trajectory on pool table felt, elevated side camera
+token: A plastic arcade token rolling on edge along a floor, eventually toppling over, ground-level camera perspective
+washer: A metal washer spinning flat on a glass surface, circular motion slowing to stop, directly above camera
+bar: A solid metal bar rotating around its center point on a pivot, conservation of angular momentum, side static view
+die: A single large foam die thrown and bouncing across carpet, coming to rest, room-level static camera
+bell: A brass hand bell rocking side to side on a desk after being set down, damped oscillation, frontal view
+puck: An air hockey puck gliding across the table surface, nearly frictionless motion, overhead stationary camera
+wheel: A bicycle wheel rolling freely across pavement until tipping over, gyroscopic effect visible, side camera angle
+rod: A metal rod dropped vertically, falling straight down and clanging on concrete floor, camera at mid-height level
+sphere: A steel sphere rolling through a curved track, gravitational potential converting to kinetic energy, fixed side camera
+chain: A metal chain sliding off a table edge, links falling in sequence with gravity, camera facing table side
+weight: A dumbbell weight rolling across gym floor, heavy mass maintaining momentum longer, ground-level static view
+disk: A metal disk spinning in place on smooth surface, rotational kinetic energy gradually dissipating, top-down camera
+cup: An empty metal cup tipping over and rolling in arc on countertop, camera positioned facing counter
+shell: An artillery shell casing rolling down metal ramp, metallic collisions audible, camera perpendicular to ramp
+axle: A steel axle rotating on its bearings, uniform circular motion, camera focused on rotation axis
+bearing: A ball bearing circling inside a curved bowl, spiral motion inward, overhead stationary camera
+mallet: A wooden mallet rocking back and forth on its head, pendulum-like damped motion, side camera view
+ingot: A gold ingot bar sliding on polished marble, low friction prolonged motion, camera at surface level
+peg: A wooden peg falling and bouncing on hardwood floor, elastic collision dynamics, camera waist-height static
+roller: A paint roller cylinder spinning after being released on drop cloth, angular deceleration visible, side camera angle
+nut: A hexagonal metal nut rolling on workshop surface, asymmetric rolling pattern, camera fixed at edge
+spindle: A wooden spindle rotating after being spun, conservation of angular momentum demonstration, camera facing spindle
+capsule: A metal capsule sliding through inclined tube, smooth uniform acceleration, camera showing tube length
+baton: A relay baton rolling across track surface, cylindrical motion with slight wobble, ground-level camera
+ring: A metal ring rolling on edge across floor, precession before falling flat, side static viewpoint
+spool: An empty thread spool rolling down gentle slope, accelerating uniformly, camera at slope base
+button: A large metal button spinning on tabletop, friction causing spiral inward motion, directly overhead camera
