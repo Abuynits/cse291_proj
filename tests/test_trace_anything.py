@@ -29,7 +29,8 @@ import os
 import cv2
 import time
 import argparse
-from typing import List, Dict
+import gc
+from typing import List, Dict, Any
 
 import numpy as np
 import torch
@@ -57,8 +58,8 @@ def _resize_long_side(pil: Image.Image, long: int = 512) -> Image.Image:
         return pil.resize((int(w * long / h), long), Image.BILINEAR)
 
 
-def _load_images(input_dir: str, device: torch.device) -> List[Dict]:
-    """Read images, rotate portrait->landscape, resize(long=512), crop to 16-multiple, normalize [-1,1]."""
+def _load_images_with_original_indices(input_dir: str):
+    """Load images and return both views and original frame indices on CPU."""
     tfm = tvf.Compose([tvf.ToTensor(), tvf.Normalize((0.5,)*3, (0.5,)*3)])
 
     fnames = sorted(
@@ -83,19 +84,23 @@ def _load_images(input_dir: str, device: torch.device) -> List[Dict]:
         if target is None:
             H, W = pil.size[1], pil.size[0]
             target = (H - H % 16, W - W % 16)
-            _pretty(f"📐 target size: {target[0]}x{target[1]} (16-multiple)")
         Ht, Wt = target
         pil = pil.crop((0, 0, Wt, Ht))
 
-        tensor = tfm(pil).unsqueeze(0).to(device)  # [1,3,H,W]
-        t = i / (len(fnames) - 1) if len(fnames) > 1 else 0.0
-        views.append({"img": tensor, "time_step": t})
-    return views
+        # Keep on CPU initially
+        tensor = tfm(pil).unsqueeze(0)
+        
+        views.append({
+            "img": tensor, 
+            "time_step": i / (len(fnames) - 1) if len(fnames) > 1 else 0.0,
+            "original_idx": i,
+            "filename": f
+        })
+    return views, len(fnames)
 
 
 # ---------------- ckpt + model ----------------
 def _get_state_dict(ckpt: dict) -> dict:
-    """Accept either a pure state_dict or a Lightning .ckpt."""
     if isinstance(ckpt, dict) and "state_dict" in ckpt and isinstance(ckpt["state_dict"], dict):
         return ckpt["state_dict"]
     return ckpt
@@ -108,7 +113,6 @@ def _load_cfg(cfg_path: str):
 
 
 def _to_dict(x):
-    # OmegaConf -> plain dict
     return OmegaConf.to_container(x, resolve=True) if not isinstance(x, dict) else x
 
 
@@ -116,7 +120,6 @@ def _build_model_from_cfg(cfg, ckpt_path: str, device: torch.device) -> torch.nn
     if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(ckpt_path)
 
-    # net config
     net_cfg = cfg.get("model", {}).get("net", None) or cfg.get("net", None)
     if net_cfg is None:
         raise KeyError("expect cfg.model.net or cfg.net in YAML")
@@ -162,12 +165,6 @@ def _otsu_threshold_from_hist(hist: np.ndarray, bin_edges: np.ndarray) -> float 
 
 
 def _smart_var_threshold(var_map_t: torch.Tensor) -> float:
-    """
-    1) log-transform variance
-    2) Otsu on histogram
-    3) fallback to 65–80% mid-quantile midpoint
-    Returns threshold in original variance domain.
-    """
     var_np = var_map_t.detach().float().cpu().numpy()
     v = np.log(var_np + 1e-9)
     hist, bin_edges = np.histogram(v, bins=256)
@@ -182,8 +179,59 @@ def _smart_var_threshold(var_map_t: torch.Tensor) -> float:
     return max(q40, min(q95, thr_var))
 
 
+# ---------------- helper: deep conversion ----------------
+def _recursive_to_cpu(data: Any) -> Any:
+    """Recursively move tensors to CPU/NumPy to ensure no GPU references remain."""
+    if isinstance(data, torch.Tensor):
+        return data.detach().cpu()
+    elif isinstance(data, dict):
+        return {k: _recursive_to_cpu(v) for k, v in data.items()}
+    elif isinstance(data, (list, tuple)):
+        return [_recursive_to_cpu(x) for x in data]
+    return data
+
+def _convert_pred_format(pred_cpu: dict) -> dict:
+    """Convert specific keys to numpy for final storage, keep others as CPU tensors."""
+    final_pred = {}
+    for key, value in pred_cpu.items():
+        if isinstance(value, torch.Tensor):
+            if key in ["ctrl_pts3d", "ctrl_conf", "time", "fg_mask"]:
+                final_pred[key] = value # Keep as CPU tensor
+            else:
+                final_pred[key] = value.detach().cpu() if value.numel() > 0 else value
+        else:
+            final_pred[key] = value
+    return final_pred
+
+
+# ---------------- chunked processing ----------------
+def _process_chunk(model, views_chunk, chunk_idx, total_chunks):
+    """Process a single chunk of views through TraceAnything."""
+    num_views = len(views_chunk)
+    _pretty(f"  Chunk {chunk_idx + 1}/{total_chunks}: processing {num_views} frames")
+    
+    t0 = time.perf_counter()
+    with torch.no_grad():
+        preds_chunk = model.forward(views_chunk)
+    dt = time.perf_counter() - t0
+    ms_per_view = (dt / max(1, num_views)) * 1000.0
+    _pretty(f"  ✅ chunk {chunk_idx + 1} done | {dt:.2f}s total | {ms_per_view:.1f} ms/view")
+    
+    # 1. Move EVERYTHING to CPU immediately to prevent GPU memory leaks
+    preds_chunk_cpu_raw = _recursive_to_cpu(preds_chunk)
+    
+    # 2. Format for storage
+    final_preds = []
+    for pred in preds_chunk_cpu_raw:
+        final_preds.append(_convert_pred_format(pred))
+    
+    # 3. Clean GPU memory inside the function
+    del preds_chunk
+    return final_preds
+
+
 # ---------------- main loop ----------------
-def run(args):
+def run(args, max_frames_per_chunk=40):
     base_in = args.input_dir
     base_out = args.output_dir
 
@@ -213,47 +261,107 @@ def run(args):
 
         _pretty(f"\n📂 Scene: {scene}")
         _pretty("🖼️  loading images …")
-        views = _load_images(in_dir, device=device)
-        if len(views) > 40:
-            stride = max(1, len(views) // 39)   # floor division
-            views = views[::stride]
-        _pretty(f"🧮 {len(views)} views loaded")
+        # Images loaded to CPU
+        views, total_frames = _load_images_with_original_indices(in_dir)
+        _pretty(f"🧮 {len(views)} views loaded (total frames: {total_frames})")
 
-        _pretty("🚀 inference …")
-        t0 = time.perf_counter()
-        with torch.no_grad():
-            preds = model.forward(views)
-        dt = time.perf_counter() - t0
-        ms_per_view = (dt / max(1, len(views))) * 1000.0
-        _pretty(f"✅ done | {dt:.2f}s total | {ms_per_view:.1f} ms/view")
+        all_preds = []
+        all_views_cpu = []
+
+        # Determine chunking
+        if len(views) <= max_frames_per_chunk:
+            # --- Single Batch Path ---
+            _pretty("🚀 inference (single batch) …")
+            
+            # Must move to GPU for the model
+            views_gpu = []
+            for v in views:
+                views_gpu.append({
+                    "img": v["img"].to(device),
+                    "time_step": v["time_step"]
+                })
+
+            preds = _process_chunk(model, views_gpu, 0, 1)
+            
+            all_preds = preds
+            all_views_cpu = views
+            
+            # Cleanup
+            del views_gpu
+            torch.cuda.empty_cache()
+
+        else:
+            # --- Chunked Path ---
+            num_chunks = (len(views) + max_frames_per_chunk - 1) // max_frames_per_chunk
+            _pretty(f"🚀 inference (chunked: {num_chunks} chunks, max {max_frames_per_chunk} frames/chunk) …")
+            
+            for chunk_idx in range(num_chunks):
+                start_idx = chunk_idx * max_frames_per_chunk
+                end_idx = min(start_idx + max_frames_per_chunk, len(views))
+                views_chunk_raw = views[start_idx:end_idx]
+                
+                # Prepare chunk on GPU
+                views_chunk_gpu = []
+                chunk_size = len(views_chunk_raw)
+                for j, view in enumerate(views_chunk_raw):
+                    chunk_time_step = j / (chunk_size - 1) if chunk_size > 1 else 0.0
+                    views_chunk_gpu.append({
+                        "img": view["img"].to(device), # Move to GPU
+                        "time_step": chunk_time_step
+                    })
+                
+                # Inference
+                preds_chunk = _process_chunk(model, views_chunk_gpu, chunk_idx, num_chunks)
+                
+                # Store results (already CPU safe from _process_chunk)
+                all_preds.extend(preds_chunk)
+                all_views_cpu.extend(views_chunk_raw) # Keep original CPU references
+                
+                # --- AGGRESSIVE CLEANUP ---
+                del views_chunk_gpu
+                gc.collect() 
+                torch.cuda.empty_cache()
+
+            total_time = len(all_views_cpu)
+            _pretty(f"✅ all chunks done | processed {total_time} frames total")
 
         # ---- compute + save FG masks and images ----
         _pretty("🧪 computing FG masks + saving frames …")
-        for i, pred in enumerate(preds):
+        for i, (pred, view) in enumerate(zip(all_preds, all_views_cpu)):
             # variance map over control points (K), mean over xyz -> [H,W]
-            ctrl_pts3d = pred["ctrl_pts3d"]
-            ctrl_pts3d_t = torch.from_numpy(ctrl_pts3d) if isinstance(ctrl_pts3d, np.ndarray) else ctrl_pts3d
-            var_map = torch.var(ctrl_pts3d_t, dim=0, unbiased=False).mean(-1)  # [H,W]
+            ctrl_pts3d = pred["ctrl_pts3d"] # pointclouds
+            var_map = torch.var(ctrl_pts3d, dim=0, unbiased=False).mean(-1)
             thr = _smart_var_threshold(var_map)
-            fg_mask = (~(var_map <= thr)).detach().cpu().numpy().astype(bool)
+            fg_mask = (~(var_map <= thr)).numpy().astype(bool)
 
-            # save mask as binary PNG and stash in preds
-            cv2.imwrite(os.path.join(masks_dir, f"{i:03d}.png"), (fg_mask.astype(np.uint8) * 255))
-            pred["fg_mask"] = torch.from_numpy(fg_mask)  # CPU bool tensor
+            original_idx = view.get("original_idx", i)
+            
+            cv2.imwrite(os.path.join(masks_dir, f"{original_idx:03d}.png"), (fg_mask.astype(np.uint8) * 255))
+            pred["fg_mask"] = torch.from_numpy(fg_mask)
 
-            # also save the RGB image we actually ran on
-            img = views[i]["img"].detach().cpu().squeeze(0)  # [3,H,W] in [-1,1]
+            # Image is already on CPU
+            img = view["img"].squeeze(0) # [3,H,W]
             img_np = (img.permute(1, 2, 0).numpy() + 1.0) * 127.5
             img_uint8 = np.clip(img_np, 0, 255).astype(np.uint8)
-            cv2.imwrite(os.path.join(images_dir, f"{i:03d}.png"), cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(os.path.join(images_dir, f"{original_idx:03d}.png"), cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR))
 
-            # trim heavy intermediates just in case
+            # trim heavy intermediates
             pred.pop("track_pts3d", None)
             pred.pop("track_conf", None)
 
-        # persist
+        # Update time field in predictions to use full-sequence time_step from views
+        # This ensures that chunked processing uses correct full-sequence times (0-1 across all frames)
+        # instead of chunk-normalized times (0-1 within each chunk)
+        for pred, view in zip(all_preds, all_views_cpu):
+            if "time" in pred:
+                # Overwrite chunk-normalized time with full-sequence time_step
+                pred["time"] = view["time_step"]
+
+        # Create views list without extra metadata for saving
+        views_for_save = [{"img": v["img"], "time_step": v["time_step"]} for v in all_views_cpu]
+        
         save_path = os.path.join(out_dir, "output.pt")
-        torch.save({"preds": preds, "views": views}, save_path)
+        torch.save({"preds": all_preds, "views": views_for_save}, save_path)
         _pretty(f"💾 saved: {save_path}")
         _pretty(f"🖼️  masks → {masks_dir} | images → {images_dir}")
 
@@ -267,11 +375,13 @@ def parse_args():
                    help="Directory containing scenes (each subfolder is a scene)")
     p.add_argument("--output_dir", type=str, default="./TraceAnything/examples/output",
                    help="Directory to write scene outputs")
+    p.add_argument("--max_frames_per_chunk", type=int, default=41,
+                   help="Maximum number of frames to process per chunk (default: 41)")
     return p.parse_args()
 
 def main():
     args = parse_args()
-    run(args)
+    run(args, max_frames_per_chunk=args.max_frames_per_chunk)
 
 if __name__ == "__main__":
     main()

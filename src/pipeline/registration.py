@@ -52,11 +52,34 @@ class DiffusionReg(Registration):
             print("Need at least two frames for registration. Skipping.")
             return
 
+        # Detect chunk boundaries: if chunking was used, boundaries occur at multiples of chunk size
+        # Default max_frames_per_chunk is 41 from test_trace_anything.py
+        max_frames_per_chunk = 41  # Default from test_trace_anything.py
+        chunk_boundaries = set()
+        if num_frames > max_frames_per_chunk:
+            # Chunk boundaries occur at: max_frames_per_chunk, 2*max_frames_per_chunk, etc.
+            # Skip registration when t_plus_1 equals these boundary values
+            for chunk_idx in range(1, (num_frames + max_frames_per_chunk - 1) // max_frames_per_chunk):
+                boundary_frame = chunk_idx * max_frames_per_chunk
+                if boundary_frame < num_frames:
+                    chunk_boundaries.add(boundary_frame)
+            if chunk_boundaries:
+                print(f"Detected chunk boundaries at frames: {sorted(chunk_boundaries)}")
+                print("Skipping registration at chunk boundaries to avoid coordinate frame mismatches.")
+
         registration_errors = []
+        skipped_boundaries = []
         n_points_resample = 1024
 
         for i in range(num_frames - 1):
             t, t_plus_1 = i, i + 1
+            
+            # Skip registration at chunk boundaries
+            if t_plus_1 in chunk_boundaries:
+                print(f"\nSkipping frames {t} and {t_plus_1} (chunk boundary)...")
+                skipped_boundaries.append((t, t_plus_1))
+                continue
+            
             print(f"\nProcessing frames {t} and {t_plus_1}...")
             
             aligned_masks, full_points = self._get_aligned_data_for_pair(trace_data, frame_paths, t, t_plus_1, device)
@@ -79,7 +102,7 @@ class DiffusionReg(Registration):
             # Error calculation logic...
             self._calculate_and_log_error(trace_data, aligned_masks, transform_mat, t, t_plus_1, registration_errors, device)
         
-        self._save_error_summary(registration_errors)
+        self._save_error_summary(registration_errors, skipped_boundaries)
 
     def _get_aligned_data_for_pair(self, trace_data, frame_paths, t, t_plus_1, device):
         aligned_masks, full_points = {}, {}
@@ -139,7 +162,7 @@ class DiffusionReg(Registration):
         print(f"Absolute Registration Error E_{t}: {absolute_error:.6f}")
         print(f"Normalized Error (relative to diagonal): {normalized_error:.4f}")
 
-    def _save_error_summary(self, registration_errors):
+    def _save_error_summary(self, registration_errors, skipped_boundaries=None):
         if registration_errors:
             avg_absolute_error = np.mean([e['absolute_error'] for e in registration_errors])
             avg_normalized_error = np.mean([e['normalized_error'] for e in registration_errors])
@@ -148,10 +171,18 @@ class DiffusionReg(Registration):
                 "average_absolute_error": float(avg_absolute_error),
                 "average_normalized_error": float(avg_normalized_error),
             }
+            if skipped_boundaries:
+                error_summary["skipped_chunk_boundaries"] = skipped_boundaries
+                error_summary["num_skipped_boundaries"] = len(skipped_boundaries)
         else:
              error_summary = {"note": "No valid point cloud pairs found for registration."}
+             if skipped_boundaries:
+                 error_summary["skipped_chunk_boundaries"] = skipped_boundaries
+                 error_summary["num_skipped_boundaries"] = len(skipped_boundaries)
         
         summary_path = os.path.join(self.context.paths["registration_output_dir"], "error_summary.json")
         with open(summary_path, 'w') as f: json.dump(error_summary, f, indent=4)
         print(f"\nRegistration complete. Average Absolute Error: {error_summary.get('average_absolute_error', 0):.6f}")
+        if skipped_boundaries:
+            print(f"Skipped {len(skipped_boundaries)} frame pairs at chunk boundaries.")
         print(f"Error summary saved to {summary_path}")

@@ -1,0 +1,10 @@
+{
+    "soccer_test": {
+        "prompt": "A soccer ball rolling dramatically across a glistening green soccer field.",
+        "target_object": "soccer ball."
+    },
+    "jet_test": {
+        "prompt": "A military flying jet moving rapidly through the blue sky, ejecting bright flares behind its smokey white wake trail.",
+        "target_object": "jet."
+    }
+}
