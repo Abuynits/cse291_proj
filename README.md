@@ -2,91 +2,29 @@
 
 ## 0. Environment Setup
 
-We use UV for the development of this project. Install UV with:
+Clone the repository:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone --recursive https://github.com/Abuynits/cse291_proj.git
 ```
 
-Then source the environment:
+We use UV for the development of this project. To set up the environment, run the following command in the project root directory:
+
 ```bash
-uv sync
+source setup.sh
 ```
 
 <b>Notes</b>
+- Tested with Ubuntu 24.04 (setup.sh currently only supports linux)
 - Tested with CUDA 12.4 and 12.8
 - Tested with RTX 3090, 4090
-- Requires ~23GB for Trace Anything running on 41 frames (TODO: chunking)
+- Requires ~23GB for Trace Anything running on 41 frames.
+    - For longer video sequences (>41 frames), we chunk and run TraceAnything independently of other chunks.
 
 >[!NOTE]
 > Environment already working?
 > Skip to [running the pipeline](#simplified-pipeline)
 
-## 1. Running WAN 2.1:
-
-Wan 2.1 is accessed through huggingface.
-
-You should now be able to a test inference script for `Wan 2.1`:
-```bash
-uv run tests/test_wan.py
-```
-
-## 2. Running Trace Anything
-
-Download Trace Anything model weights:
-```bash
-mkdir -p TraceAnything/checkpoints
-wget -O TraceAnything/checkpoints/trace_anything.pt "https://huggingface.co/depth-anything/trace-anything/resolve/main/trace_anything.pt?download=true"
-```
-
-Then from the project directory run:
-```bash
-uv pip install -e ./TraceAnything
-```
-
-You should now be able to a test inference script for `Trace Anything`:
-```bash
-uv run tests/test_trace_anything.py
-```
-
-
-## 3. Generating Videos with Wan 2.1
-
-The first part of the pipeline is for generating sample videos with WAN 2.1.
-
-You can find the `hydra` config in the `config/video_generation` directory,
- to specify the generation parameters (and the location of prompts).
-
-Prompts are located in the `prompts/video_generation` directory.
-
-Wan2.1 uses a `negative_prompt.txt` file to specify what to not generate.
-
-You can run the video generation script from the project directory with:
-```bash
-CUDA_VISIBLE_DEVICES=5 uv run src/video_generation/generator.py --config-path ../../config/video_generation --config-name config.yaml
-```
-
-TODO: make this multiprocessed if multiple GPUs are available.
-
-## 4. Configuring Grounded-SAM
-
-Grounded-SAM is available from huggingface. verify that it is working and that 
-you have installed sam2 correctly through:
-```bash
-uv run tests/test_grounded_sam.py
-```
-
-## 5. Estimating Trajectories with Trace Anything
-
-Similarly to video generation, the trajectory estimation script uses `hydra`
-for configuration. The config files are located in the `config/trajectory_estimation` directory.
-
-You can run the trajectory estimation script from the project directory with:
-
-```bash
-CUDA_VISIBLE_DEVICES=5 uv run src/trajectory_estimation/estimator.py --config-path ../../config/trajectory_estimation --config-name base
-```
-
-# Simplified Pipeline
+# Using the Pipeline
 Once all models are setup, we can use this easy to use CLI for inference.
 
 ## Inference
@@ -147,3 +85,5 @@ This will launch a Viser application in which we are able to see the trajectorie
 
 >[!TIP]
 > Trajectories not displaying? After marking the checkbox, press the rebuild button and then play the video.
+
+Alternatively, we have provided a `visualize_pointcloud.ipynb` notebook that visualizes the comparison between the TraceAnything pointclouds and the Euclidean transformed pointclouds from an adjacent timestep using the learning-based registration method, DiffusionReg.
