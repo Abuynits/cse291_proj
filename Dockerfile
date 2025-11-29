@@ -49,6 +49,6 @@ RUN mkdir -p build && cd build && \
 
 # Install Python bindings into the image's Python environment
 RUN cd build/python && \
-    python3 -m pip install .
+    uv pip install .
 
 WORKDIR /cse291_proj

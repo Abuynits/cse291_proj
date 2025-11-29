@@ -29,7 +29,7 @@ sudo apt-get install -y libgl1
     make teaserpp_python
 
     cd python
-    python3 -m pip install .
+    uv pip install .
 ) || {
     echo "TEASER++ installation failed; skipping."
 }
