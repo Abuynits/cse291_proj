@@ -10,6 +10,7 @@ sys.path.append(os.path.join(os.getcwd(), "third_party/DiffusionReg"))
 # To add a new component (e.g., a new registration method), just import it here.
 # Most likely, only need to change out video model or point registration method.
 from src.pipeline import (
+    TEASER,
     DiffusionReg,
     Pipeline,
     PipelineContext,
@@ -18,13 +19,6 @@ from src.pipeline import (
     TraceAnythingTracer,
     Wan2_1VideoGenerator,
 )
-
-# Optional imports
-try:
-    from src.pipeline import TEASER
-except ImportError:
-    print("[INFO] TEASER++ not available.")
-    TEASER = None
 
 REG_METHODS = {"diffusionreg": DiffusionReg, "teaser": TEASER}
 
