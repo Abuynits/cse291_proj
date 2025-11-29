@@ -42,7 +42,7 @@ def create_pipeline(run_name: str, args: argparse.Namespace) -> Pipeline:
 
 def main():
     parser = argparse.ArgumentParser(description="Run the full 3D reconstruction pipeline.")
-    parser.add_argument("-n", "--run_name", type=str, default="", help="A base name for this pipeline run. If prompt config defines multiple runs, this will be used as a prefix.")
+    parser.add_argument("-n", "--run_name", type=str, default="", help="A base name for this pipeline run. If a prompt config is used, this is a prefix. If the run exists, it will be reused.")
     parser.add_argument("--video_prompt", type=str, default=None, help="The prompt to generate the video. This overrides the prompt_path if provided.")
     parser.add_argument("--target_object", type=str, default=None, help="A short description of the object to be tracked.")
     parser.add_argument("--prompt_path", type=str, default="prompts/video_generation/prompts/sample_prompts.json", help="The path to the video generation config file to use (if not using CLI)")
@@ -52,44 +52,92 @@ def main():
     parser.add_argument("--start-at", type=str, default="videogeneration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to start from.")
     parser.add_argument("--end-at", type=str, default="registration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to end at.")
     
+    parser.add_argument("--box_threshold", type=float, default=0.4, help="The confidence threshold for bounding box detection.")
+    parser.add_argument("--text_threshold", type=float, default=0.3, help="The confidence threshold for text matching.")
+    
     args = parser.parse_args()
 
-    if args.video_prompt is not None:
-        assert args.target_object is not None, "Error: Target object is required when video prompt is provided."
+    runs = {}
 
-    runs = None
-    if args.video_prompt is None and args.prompt_path:
-        # if empty prompt, check the prompt path json file
+    # Priority 1: A specific run name is given and it already exists.
+    if args.run_name and os.path.exists(os.path.join("results", args.run_name)):
+        print(f"Found existing run '{args.run_name}'. Loading its metadata to re-run parts of the pipeline.")
+        metadata_path = os.path.join("results", args.run_name, "1_video", "metadata.json")
         try:
-            print(f"Loading runs from {args.prompt_path}...")
-            runs = json.load(open(args.prompt_path))
-            print(f"Found {len(runs)} runs in {args.prompt_path}:")
-            for run_key in runs.keys():
-                print(f"- {run_key}")
-        except Exception as e:
-            # if doesn't exist, try to see if the args.run_name output exists previously
-            if os.path.exists(os.path.join("results", args.run_name)):
-                metadata = os.path.join("results", args.run_name, "1_video", "metadata.json")
-                with open(metadata, 'r') as f:
-                    meta = json.load(f)
-                # read prompt information from existing metadata
-                runs = { args.run_name: { "prompt": meta['prompt'], "target_object": meta['target_object'] } }
-    else:
+            with open(metadata_path, 'r') as f:
+                meta = json.load(f)
+            runs = {
+                args.run_name: {
+                    "prompt": meta.get('prompt', ''),
+                    "target_object": meta.get('target_object', '')
+                }
+            }
+            print(f"  - Loaded target object: '{meta.get('target_object', '')}'")
+        except FileNotFoundError:
+            print(f"Warning: Could not find metadata.json at '{metadata_path}'. Proceeding without prompt/object info.")
+            runs = { args.run_name: { "prompt": "", "target_object": "" } }
+
+    # Priority 2: A specific prompt is given via CLI for a new run.
+    elif args.video_prompt:
+        if not args.run_name:
+            print("Error: --run_name is required when providing --video_prompt for a new run.")
+            return
+        if not args.target_object:
+            print("Error: --target_object is required when providing --video_prompt for a new run.")
+            return
         runs = { args.run_name: { "prompt": args.video_prompt, "target_object": args.target_object } }
 
-    # create and run pipeline(s)
+    # Priority 3: Use a prompt file to generate (potentially multiple) new runs.
+    elif args.prompt_path:
+        print(f"Loading runs from {args.prompt_path}...")
+        try:
+            with open(args.prompt_path, 'r') as f:
+                prompt_runs = json.load(f)
+            print(f"Found {len(prompt_runs)} runs in {args.prompt_path}:")
+            for run_key in prompt_runs.keys():
+                print(f"- {run_key}")
+            
+            if args.run_name: # Use as a prefix for all runs from the file
+                for run_key, run_data in prompt_runs.items():
+                    new_key = f"{args.run_name}_{run_key}"
+                    runs[new_key] = run_data
+            else: # Use keys from file directly
+                runs = prompt_runs
+
+        except Exception as e:
+            print(f"Error: Could not load or parse prompt file at {args.prompt_path}: {e}")
+            return
+    
+    if not runs:
+        if args.run_name:
+            # This case happens if a run_name was given, but it didn't exist and no other instructions were provided.
+            # Assume it's a new run with no prompt (e.g., for custom video).
+            print(f"Starting new run '{args.run_name}' with no prompt. Assumes video/frames exist.")
+            runs = { args.run_name: { "prompt": "", "target_object": args.target_object or "" } }
+        else:
+            print("Error: No runs to process. Provide a --run_name, --video_prompt, or valid --prompt_path.")
+            return
+
+    # Create and run pipeline(s)
     for run_key, run_data in runs.items():
-        print(f"\nGenerating run: {run_key}")
-        print(f"  - Prompt: {run_data['prompt']}")
-        print(f"  - Target Object: {run_data['target_object']}")
+        print(f"\n--- Processing run: {run_key} ---")
+        if run_data.get('prompt'):
+            print(f"  - Prompt: {run_data['prompt']}")
+        if run_data.get('target_object'):
+            print(f"  - Target Object: {run_data['target_object']}")
 
-        args.video_prompt = run_data["prompt"]
-        args.target_object = run_data["target_object"]
+        # Pass the specific run's data to the context
+        args.video_prompt = run_data.get("prompt", "")
+        args.target_object = run_data.get("target_object", "")
 
-        pipeline = create_pipeline(f"{args.run_name}_{run_key}", args)
+        # The pipeline is ALWAYS created with the final, resolved run_key
+        pipeline = create_pipeline(run_key, args)
+        
         start_component, end_component = get_partial_run_range_for_debug(pipeline, args)
-        start_component = start_component if start_component is not None else "videogeneration"
-        end_component = end_component if end_component is not None else "registration"
+        if start_component is None or end_component is None:
+            continue
+        
+        print(f"Executing components: {pipeline.get_components_in_range(start_component, end_component)}")
         pipeline.run(start_at=start_component, end_at=end_component)
 
 

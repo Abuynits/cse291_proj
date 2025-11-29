@@ -1,65 +1,116 @@
 import torch
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from pathlib import Path
 from PIL import Image
 import numpy as np
 import cv2
-from matplotlib import pyplot as plt
-
-def show_points(coords, labels, ax, marker_size=375):
-    pos_points = coords[labels==1]
-    neg_points = coords[labels==0]
-    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
-    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)   
-
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))    
-
-def show_mask(mask, ax, random_color=False, borders = True):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
-    h, w = mask.shape[-2:]
-    mask = mask.astype(np.uint8)
-    mask_image =  mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    if borders:
-        import cv2
-        contours, _ = cv2.findContours(mask,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) 
-        # Try to smooth contours
-        contours = [cv2.approxPolyDP(contour, epsilon=0.01, closed=True) for contour in contours]
-        mask_image = cv2.drawContours(mask_image, contours, -1, (1, 1, 1, 0.5), thickness=2) 
-    ax.imshow(mask_image)
+import argparse
 
 
-def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_labels=None, borders=True, path=None):
-    for i, (mask, score) in enumerate(zip(masks, scores)):
-        plt.figure(figsize=(10, 10))
-        show_mask(mask, plt.gca(), borders=borders)
-        if point_coords is not None:
-            assert input_labels is not None
-            show_points(point_coords, input_labels, plt.gca())
-        if box_coords is not None:
-            # boxes
-            show_box(box_coords, plt.gca())
-        if len(scores) > 1:
-            plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
-        plt.axis('off')
-        if path is None:
-            plt.imsave(f"mask_{i+1}.png", image)
-        else:
-            plt.imsave(path / f"mask_{i+1}.png", image)
+def generate_and_save_mask(image_path: str, output_path: str, text_prompt: str, mask_index: int = 0):
+    """
+    Generate a mask for the given image using Grounding DINO + SAM2 with a text prompt.
+    
+    Args:
+        image_path: Path to the input image
+        output_path: Path where the mask will be saved (should end in .png)
+        text_prompt: Text description of the object to segment (e.g., "bus", "person", "dog")
+        mask_index: Which mask to save if multiple objects are detected (default: 0, the highest scoring)
+    """
+    image_path = Path(image_path)
+    output_path = Path(output_path)
+    
+    if not image_path.exists():
+        raise FileNotFoundError(f"Input image not found: {image_path}")
+    
+    # Ensure output has .png extension
+    if output_path.suffix.lower() not in ['.png', '.jpg', '.jpeg']:
+        output_path = output_path.with_suffix('.png')
+        print(f"Added .png extension to output path: {output_path}")
+    
+    # Create output directory if it doesn't exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Load image
+    image = Image.open(image_path)
+    
+    # Load models
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Loading Grounding DINO and SAM2 models on {device}...")
+    
+    sam2_predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2-hiera-large")
+    grounding_processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
+    grounding_model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-base").to(device)
+    
+    # Use Grounding DINO to detect object based on text prompt
+    print(f"Detecting '{text_prompt}' in image...")
+    sam2_predictor.set_image(image)
+    
+    inputs = grounding_processor(images=image, text=text_prompt, return_tensors="pt").to(device)
+    with torch.no_grad():
+        outputs = grounding_model(**inputs)
+    
+    results = grounding_processor.post_process_grounded_object_detection(
+        outputs,
+        inputs.input_ids,
+        threshold=0.4,
+        text_threshold=0.3,
+        target_sizes=[image.size[::-1]]
+    )
+    
+    if len(results[0]["labels"]) == 0:
+        print(f"No objects matching '{text_prompt}' were detected in the image.")
+        # Save an empty mask
+        empty_mask = np.zeros((image.height, image.width), dtype=np.uint8)
+        cv2.imwrite(str(output_path), empty_mask)
+        print(f"Saved empty mask to {output_path}")
+        return None, 0.0
+    
+    # Get bounding boxes for detected objects
+    input_boxes = results[0]["boxes"].cpu().numpy()
+    labels = results[0]["labels"]
+    print(f"Detected {len(labels)} object(s): {labels}")
+    
+    # Use SAM2 to generate masks from the bounding boxes
+    masks, scores, logits = sam2_predictor.predict(
+        point_coords=None,
+        point_labels=None,
+        box=input_boxes,
+        multimask_output=False,
+    )
+    
+    # Convert shape to (n, H, W) if needed
+    if masks.ndim == 4:
+        masks = masks.squeeze(1)
+    
+    print(f"Generated {len(masks)} mask(s) with scores: {scores}")
+    
+    # Save the specified mask (or highest scoring one)
+    if mask_index >= len(masks):
+        print(f"Warning: mask_index {mask_index} out of range, using mask 0")
+        mask_index = 0
+    
+    mask_to_save = masks[mask_index]
+    mask_uint8 = (mask_to_save * 255).astype(np.uint8)
+    
+    cv2.imwrite(str(output_path), mask_uint8)
+    print(f"Saved mask {mask_index} (label: '{labels[mask_index]}', score: {scores[mask_index]:.3f}) to {output_path}")
+    
+    return mask_to_save, scores[mask_index]
 
-example_im = Path(__file__).parent.parent / "TraceAnything/examples/input/corgi/000.png"
-example_image = Image.open(example_im)
 
-predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2-hiera-large")
+def main():
+    parser = argparse.ArgumentParser(description="Generate and save a mask for an image using Grounding DINO + SAM2")
+    parser.add_argument("image_path", type=str, help="Path to the input image")
+    parser.add_argument("output_path", type=str, help="Path where the mask will be saved")
+    parser.add_argument("text_prompt", type=str, help="Text description of the object to segment (e.g., 'bus', 'person')")
+    parser.add_argument("--mask_index", type=int, default=0, 
+                        help="Which mask to save if multiple objects are detected (default: 0)")
+    args = parser.parse_args()
+    
+    generate_and_save_mask(args.image_path, args.output_path, args.text_prompt, args.mask_index)
 
-with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-    predictor.set_image(example_image)
-    masks, scores, logits = predictor.predict()
-    print(masks.shape)
 
-show_masks(example_image, masks, scores, point_coords=None, input_labels=None, borders=True, path=example_im.parent)
+if __name__ == "__main__":
+    main()

@@ -2,18 +2,42 @@ import os
 import json
 import numpy as np
 import torch
-from PIL import Image
 from .pipeline import PipelineComponent, PipelineContext
-from third_party.DiffusionReg.register_pointclouds import init_opts, get_model, register, resample_pcd, load_point_cloud
+from third_party.DiffusionReg.register_pointclouds import init_opts, get_model, register, resample_pcd
 from third_party.DiffusionReg.utils.options import opts
+from scipy.spatial import cKDTree
 
-def _resize_long_side(pil: Image.Image, long: int = 512) -> Image.Image:
-    """A helper function to mimic the resizing in TraceAnything's infer.py"""
-    w, h = pil.size
-    if w >= h:
-        return pil.resize((long, int(h * long / w)), Image.BILINEAR)
-    else:
-        return pil.resize((int(w * long / h), long), Image.BILINEAR)
+def apply_transformation(points, transform):
+    """Helper to apply a 4x4 transformation matrix to a point cloud."""
+    p_homo = np.hstack((points, np.ones((points.shape[0], 1))))
+    p_transformed = (transform @ p_homo.T).T[:, :3]
+    return p_transformed
+
+def chamfer_distance(A, B):
+    """
+    Calculates the Chamfer distance between two point clouds.
+    The distance is symmetrical and handles unordered point sets of different sizes.
+
+    Args:
+        A: First point cloud (N, 3).
+        B: Second point cloud (M, 3).
+
+    Returns:
+        float: chamfer distance
+    """
+    # Create KD-Trees for fast nearest-neighbor lookup
+    kdtree_B = cKDTree(B)
+    kdtree_A = cKDTree(A)
+    
+    # Find the nearest neighbor in B for each point in A
+    d1, _ = kdtree_B.query(A, k=1)
+    
+    # Find the nearest neighbor in A for each point in B
+    d2, _ = kdtree_A.query(B, k=1)
+    
+    # The Chamfer distance is the sum of the mean squared distances
+    return np.mean(d1**2) + np.mean(d2**2)
+
 
 class Registration(PipelineComponent):
     """Base class for registration components."""
@@ -34,38 +58,41 @@ class DiffusionReg(Registration):
     def run(self):
         print("--- Registering Point Clouds with DiffusionReg ---")
         
-        scene_dir_name = f"{self.context.run_name}_scene"
-        trace_output_file = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
-        # (File existence checks) ...
+        # Check that pointclouds exist
+        if not os.path.exists(self.context.paths["pointclouds_dir"]) or not os.listdir(self.context.paths["pointclouds_dir"]):
+            raise FileNotFoundError(f"Pointclouds directory not found or is empty: {self.context.paths['pointclouds_dir']}")
 
+        # Load trace data to get chunk boundaries
+        scene_dir_name = f"{os.path.basename(self.context.run_name)}_scene"
+        trace_output_file = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
+        if not os.path.exists(trace_output_file):
+            raise FileNotFoundError(f"Trace Anything output file not found: {trace_output_file}")
+            
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        trace_data = torch.load(trace_output_file, map_location=device)
+
         reg_opts = init_opts(opts)
         reg_model = get_model(reg_opts)
         if reg_model is None:
             raise RuntimeError("Failed to load DiffusionReg model.")
 
-        trace_data = torch.load(trace_output_file, map_location=device)
-        num_frames = len(trace_data['preds'])
-        frame_paths = sorted([os.path.join(self.context.paths["frames_scene_dir"], f) for f in os.listdir(self.context.paths["frames_scene_dir"]) if f.endswith('.png')])
-
+        pointcloud_files = sorted([f for f in os.listdir(self.context.paths["pointclouds_dir"]) if f.endswith('.npy')])
+        num_frames = len(pointcloud_files)
+        
         if num_frames < 2:
             print("Need at least two frames for registration. Skipping.")
             return
 
-        # Detect chunk boundaries: if chunking was used, boundaries occur at multiples of chunk size
-        # Default max_frames_per_chunk is 41 from test_trace_anything.py
-        max_frames_per_chunk = 41  # Default from test_trace_anything.py
+        # Infer chunk boundaries from trace data to avoid registering across discontinuous coordinate frames
         chunk_boundaries = set()
-        if num_frames > max_frames_per_chunk:
-            # Chunk boundaries occur at: max_frames_per_chunk, 2*max_frames_per_chunk, etc.
-            # Skip registration when t_plus_1 equals these boundary values
-            for chunk_idx in range(1, (num_frames + max_frames_per_chunk - 1) // max_frames_per_chunk):
-                boundary_frame = chunk_idx * max_frames_per_chunk
-                if boundary_frame < num_frames:
-                    chunk_boundaries.add(boundary_frame)
-            if chunk_boundaries:
-                print(f"Detected chunk boundaries at frames: {sorted(chunk_boundaries)}")
-                print("Skipping registration at chunk boundaries to avoid coordinate frame mismatches.")
+        for i in range(1, len(trace_data['preds'])):
+            # based on how the pointcloud extraction step is done, this should never happen
+            # cross-chunk-boundary pointclouds are removed.
+            if trace_data['preds'][i].get('chunk_idx', 0) > trace_data['preds'][i-1].get('chunk_idx', 0):
+                chunk_boundaries.add(i)
+        
+        if chunk_boundaries:
+            print(f"Detected chunk boundaries at frames: {sorted(chunk_boundaries)}. Skipping registration for these pairs.")
 
         registration_errors = []
         skipped_boundaries = []
@@ -73,103 +100,94 @@ class DiffusionReg(Registration):
 
         for i in range(num_frames - 1):
             t, t_plus_1 = i, i + 1
-            
-            # Skip registration at chunk boundaries
+
             if t_plus_1 in chunk_boundaries:
                 print(f"\nSkipping frames {t} and {t_plus_1} (chunk boundary)...")
                 skipped_boundaries.append((t, t_plus_1))
                 continue
             
             print(f"\nProcessing frames {t} and {t_plus_1}...")
-            
-            aligned_masks, full_points = self._get_aligned_data_for_pair(trace_data, frame_paths, t, t_plus_1, device)
-            
-            if aligned_masks.get(t) is None or aligned_masks.get(t_plus_1) is None: continue
 
-            pcd_t_full = full_points.get(t, np.array([]))
-            pcd_t_plus_1_full = full_points.get(t_plus_1, np.array([]))
+            # Load the saved pointclouds
+            pcd_t_path = os.path.join(self.context.paths["pointclouds_dir"], f"pointcloud_{t:05d}.npy")
+            pcd_t1_path = os.path.join(self.context.paths["pointclouds_dir"], f"pointcloud_{t_plus_1:05d}.npy")
             
-            if pcd_t_full.shape[0] == 0 or pcd_t_plus_1_full.shape[0] == 0: continue
+            if not os.path.exists(pcd_t_path) or not os.path.exists(pcd_t1_path):
+                print(f"  - Warning: Pointcloud files not found for frames {t} and/or {t_plus_1}. Skipping.")
+                continue
 
+            pcd_t_full = np.load(pcd_t_path)
+            pcd_t1_full = np.load(pcd_t1_path)
+
+            if pcd_t_full.shape[0] < n_points_resample or pcd_t1_full.shape[0] < n_points_resample:
+                print(f"  - Skipping due to insufficient points for resampling ({pcd_t_full.shape[0]} or {pcd_t1_full.shape[0]} < {n_points_resample}).")
+                continue
+            
+            # Resample pointclouds ONLY for registration (DiffusionReg requires fixed size inputs)
             pcd_t_reg = resample_pcd(pcd_t_full, n_points_resample)
-            pcd_t_plus_1_reg = resample_pcd(pcd_t_plus_1_full, n_points_resample)
+            pcd_t1_reg = resample_pcd(pcd_t1_full, n_points_resample)
             
-            transform_mat = register(reg_model, reg_opts, pcd_t_plus_1_reg, pcd_t_reg)
+            # Register: find transformation from t+1 to t using resampled clouds
+            transform_mat = register(reg_model, reg_opts, pcd_t1_reg, pcd_t_reg)
             
             transform_filename = os.path.join(self.context.paths["registration_output_dir"], f"transform_from_{t_plus_1}_to_{t}.npy")
             np.save(transform_filename, transform_mat)
 
-            # Error calculation logic...
-            self._calculate_and_log_error(trace_data, aligned_masks, transform_mat, t, t_plus_1, registration_errors, device)
+            # --- Error Calculation using FULL point clouds ---
+            # Transform t+1 to t's coordinate frame
+            pcd_t1_full_transformed = apply_transformation(pcd_t1_full, transform_mat)
+            
+            # compute Chamfer distance between original t and transformed t+1 (full clouds)
+            chamfer_dist = chamfer_distance(pcd_t_full, pcd_t1_full_transformed)
+            
+            # compute L2 error
+            if pcd_t_full.shape[0] == pcd_t1_full_transformed.shape[0]:
+                distances = np.linalg.norm(pcd_t_full - pcd_t1_full_transformed, axis=1)
+                absolute_error = np.mean(distances)
+                
+                min_coords = np.min(pcd_t_full, axis=0)
+                max_coords = np.max(pcd_t_full, axis=0)
+                bounding_box_diagonal = np.linalg.norm(max_coords - min_coords)
+                normalized_error = absolute_error / bounding_box_diagonal if bounding_box_diagonal > 1e-6 else absolute_error
+            else:
+                # If sizes don't match, we can't compute point-to-point L2
+                # since all trajectories derive from frame0, should not reach this part
+                print(f"  - Note: Point counts differ ({pcd_t_full.shape[0]} vs {pcd_t1_full_transformed.shape[0]}), skipping L2 correspondence error.")
+                absolute_error = -1.0
+                normalized_error = -1.0
+                bounding_box_diagonal = -1.0
+
+            error_metrics = {
+                "frame_pair": (t, t_plus_1),
+                "absolute_error": float(absolute_error),
+                "normalized_error": float(normalized_error),
+                "bounding_box_diagonal": float(bounding_box_diagonal),
+                "chamfer_distance": float(chamfer_dist)
+            }
+            
+            print(f"  - Chamfer Distance: {chamfer_dist:.6f}")
+            if absolute_error != -1.0:
+                print(f"  - L2 Correspondence Error: {absolute_error:.6f} (Normalized: {normalized_error:.4f})")
+            
+            registration_errors.append(error_metrics)
         
         self._save_error_summary(registration_errors, skipped_boundaries)
 
-    def _get_aligned_data_for_pair(self, trace_data, frame_paths, t, t_plus_1, device):
-        aligned_masks, full_points = {}, {}
-        for frame_idx in [t, t_plus_1]:
-            mask_path = os.path.join(self.context.paths["masks_dir"], f"{frame_idx:05d}.png")
-            if not os.path.exists(mask_path) or not os.path.exists(frame_paths[frame_idx]):
-                aligned_masks[frame_idx] = None
-                continue
-            
-            gtsam_mask_pil = Image.open(mask_path)
-            original_frame_pil = Image.open(frame_paths[frame_idx])
-            
-            W0, H0 = original_frame_pil.size
-            if H0 > W0: gtsam_mask_pil = gtsam_mask_pil.transpose(Image.Transpose.ROTATE_90)
-            
-            resized_mask_pil = _resize_long_side(gtsam_mask_pil, 512)
-            H, W = resized_mask_pil.size[1], resized_mask_pil.size[0]
-            Ht, Wt = (H - H % 16, W - W % 16)
-            aligned_mask_pil = resized_mask_pil.crop((0, 0, Wt, Ht))
-            aligned_masks[frame_idx] = np.array(aligned_mask_pil) > 0
-
-            ctrl_pts_3d = trace_data['preds'][frame_idx]['ctrl_pts3d']
-            if isinstance(ctrl_pts_3d, np.ndarray): ctrl_pts_3d = torch.from_numpy(ctrl_pts_3d).to(device)
-            
-            points_for_frame = ctrl_pts_3d.permute(1, 2, 0, 3)
-            full_points[frame_idx] = points_for_frame[aligned_masks[frame_idx]][:, 0, :].cpu().numpy()
-        return aligned_masks, full_points
-
-    def _calculate_and_log_error(self, trace_data, aligned_masks, transform_mat, t, t_plus_1, registration_errors, device):
-        common_mask = aligned_masks[t] & aligned_masks[t_plus_1]
-        if not np.any(common_mask): return
-        
-        C_t = trace_data['preds'][t]['ctrl_pts3d']
-        C_t_plus_1 = trace_data['preds'][t+1]['ctrl_pts3d']
-        if isinstance(C_t, np.ndarray): C_t = torch.from_numpy(C_t).to(device)
-        if isinstance(C_t_plus_1, np.ndarray): C_t_plus_1 = torch.from_numpy(C_t_plus_1).to(device)
-
-        points_t_corr = C_t.permute(1, 2, 0, 3)[common_mask][:, 0, :].cpu().numpy()
-        points_t_plus_1_corr = C_t_plus_1.permute(1, 2, 0, 3)[common_mask][:, 0, :].cpu().numpy()
-        
-        p_t_plus_1_homo = np.hstack((points_t_plus_1_corr, np.ones((points_t_plus_1_corr.shape[0], 1))))
-        transformed_points = (transform_mat @ p_t_plus_1_homo.T).T[:, :3]
-
-        distances = np.linalg.norm(points_t_corr - transformed_points, axis=1)
-        absolute_error = np.mean(distances)
-
-        min_coords, max_coords = np.min(points_t_corr, axis=0), np.max(points_t_corr, axis=0)
-        bounding_box_diagonal = np.linalg.norm(max_coords - min_coords)
-        normalized_error = absolute_error / bounding_box_diagonal if bounding_box_diagonal > 1e-6 else absolute_error
-
-        registration_errors.append({
-            "frame_pair": (t, t_plus_1),
-            "absolute_error": float(absolute_error),
-            "normalized_error": float(normalized_error),
-            "bounding_box_diagonal": float(bounding_box_diagonal)
-        })
-        print(f"Absolute Registration Error E_{t}: {absolute_error:.6f}")
-        print(f"Normalized Error (relative to diagonal): {normalized_error:.4f}")
 
     def _save_error_summary(self, registration_errors, skipped_boundaries=None):
         if registration_errors:
-            avg_absolute_error = np.mean([e['absolute_error'] for e in registration_errors])
-            avg_normalized_error = np.mean([e['normalized_error'] for e in registration_errors])
+            # Filter out unsuccessful L2 error calculations if they occurred
+            valid_l2_errors = [e for e in registration_errors if e['absolute_error'] != -1.0]
+            avg_absolute_error = np.mean([e['absolute_error'] for e in valid_l2_errors]) if valid_l2_errors else -1.0
+            avg_normalized_error = np.mean([e['normalized_error'] for e in valid_l2_errors]) if valid_l2_errors else -1.0
+            
+            avg_chamfer_dist = np.mean([e['chamfer_distance'] for e in registration_errors])
+            
             error_summary = {
                 "individual_errors": registration_errors,
                 "average_absolute_error": float(avg_absolute_error),
                 "average_normalized_error": float(avg_normalized_error),
+                "average_chamfer_distance": float(avg_chamfer_dist),
             }
             if skipped_boundaries:
                 error_summary["skipped_chunk_boundaries"] = skipped_boundaries
@@ -182,7 +200,9 @@ class DiffusionReg(Registration):
         
         summary_path = os.path.join(self.context.paths["registration_output_dir"], "error_summary.json")
         with open(summary_path, 'w') as f: json.dump(error_summary, f, indent=4)
-        print(f"\nRegistration complete. Average Absolute Error: {error_summary.get('average_absolute_error', 0):.6f}")
+        print(f"\nRegistration complete.")
+        print(f"  - Average L2 Error: {error_summary.get('average_absolute_error', 'N/A'):.6f}")
+        print(f"  - Average Chamfer Distance: {error_summary.get('average_chamfer_distance', 'N/A'):.6f}")
         if skipped_boundaries:
-            print(f"Skipped {len(skipped_boundaries)} frame pairs at chunk boundaries.")
+            print(f"Skipped {len(skipped_boundaries)} frame pairs at inferred chunk boundaries.")
         print(f"Error summary saved to {summary_path}")
