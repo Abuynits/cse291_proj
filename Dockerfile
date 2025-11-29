@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
+    curl \
     git \
     python3 \
     python3-pip \
@@ -21,17 +22,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
-# Python dependencies
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir --upgrade numpy open3d
+# Set up environment
+RUN git clone --recursive https://github.com/Abuynits/cse291_proj.git
+WORKDIR /cse291_proj
 
-# Create a directory for building
-WORKDIR /opt/teaserpp
+# From setup.sh
+SHELL ["/bin/bash", "-c"]
+# setup uv environment (should be enough for Wan and SAM2 steps)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+RUN uv sync
+ENV PATH="/cse291_proj/.venv/bin/activate:${PATH}"
 
-# Copy the local repository into the build context
-COPY TEASER-plusplus /opt/teaserpp
+# get TraceAnything checkpoint
+RUN mkdir -p TraceAnything/checkpoints && \ 
+    curl -L -o TraceAnything/checkpoints/trace_anything.pt https://huggingface.co/depth-anything/trace-anything/resolve/main/trace_anything.pt?download=true
+
+# place our registration script into the correct directory
+RUN mv register_pointclouds.py third_party/DiffusionReg
 
 # Build TEASER++
+WORKDIR /cse291_proj/third_party/TEASER-plusplus
 RUN mkdir -p build && cd build && \
     cmake -DTEASERPP_PYTHON_VERSION=3 .. && \
     make teaserpp_python
@@ -39,3 +50,5 @@ RUN mkdir -p build && cd build && \
 # Install Python bindings into the image's Python environment
 RUN cd build/python && \
     python3 -m pip install .
+
+WORKDIR /cse291_proj

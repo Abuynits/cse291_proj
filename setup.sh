@@ -16,3 +16,20 @@ mv register_pointclouds.py third_party/DiffusionReg
 # more dependencies
 sudo apt-get update
 sudo apt-get install -y libgl1
+
+# build and install TEASER++
+(
+    set -e
+    echo "Building TEASER++..."
+
+    cd third_party/TEASER-plusplus
+    mkdir -p build
+    cd build
+    cmake -DTEASERPP_PYTHON_VERSION=3 ..
+    make teaserpp_python
+
+    cd python
+    python3 -m pip install .
+) || {
+    echo "TEASER++ installation failed; skipping."
+}

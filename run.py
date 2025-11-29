@@ -1,22 +1,32 @@
 import argparse
-import sys
-import os
 import json
+import os
+import sys
 
 # Add third-party directories to Python's path
 sys.path.append(os.path.join(os.getcwd(), "third_party/DiffusionReg"))
 
-# === Add imports here === # 
+# === Add imports here === #
 # To add a new component (e.g., a new registration method), just import it here.
 # Most likely, only need to change out video model or point registration method.
 from src.pipeline import (
-    Pipeline, PipelineContext,
-    Wan2_1VideoGenerator,
+    DiffusionReg,
+    Pipeline,
+    PipelineContext,
+    PointCloudExtraction,
     SAM2Segmenter,
     TraceAnythingTracer,
-    PointCloudExtraction,
-    DiffusionReg
+    Wan2_1VideoGenerator,
 )
+
+# Optional imports
+try:
+    from src.pipeline import TEASER
+except ImportError:
+    print("[INFO] TEASER++ not available.")
+    TEASER = None
+
+REG_METHODS = {"diffusionreg": DiffusionReg, "teaser": TEASER}
 
 
 def create_pipeline(run_name: str, args: argparse.Namespace) -> Pipeline:
@@ -36,26 +46,87 @@ def create_pipeline(run_name: str, args: argparse.Namespace) -> Pipeline:
     pipeline.add_component(SAM2Segmenter)
     pipeline.add_component(TraceAnythingTracer)
     pipeline.add_component(PointCloudExtraction)
-    pipeline.add_component(DiffusionReg)
-    
+
+    reg_backend = REG_METHODS.get(args.reg_method.lower(), None)
+    assert reg_backend is not None
+    pipeline.add_component(reg_backend)
+
     return pipeline
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Run the full 3D reconstruction pipeline.")
-    parser.add_argument("-n", "--run_name", type=str, default="", help="A base name for this pipeline run. If prompt config defines multiple runs, this will be used as a prefix.")
-    parser.add_argument("--video_prompt", type=str, default=None, help="The prompt to generate the video. This overrides the prompt_path if provided.")
-    parser.add_argument("--target_object", type=str, default=None, help="A short description of the object to be tracked.")
-    parser.add_argument("--prompt_path", type=str, default="prompts/video_generation/prompts/sample_prompts.json", help="The path to the video generation config file to use (if not using CLI)")
+    parser = argparse.ArgumentParser(
+        description="Run the full 3D reconstruction pipeline."
+    )
+    parser.add_argument(
+        "-n",
+        "--run_name",
+        type=str,
+        default="",
+        help="A base name for this pipeline run. If prompt config defines multiple runs, this will be used as a prefix.",
+    )
+    parser.add_argument(
+        "--video_prompt",
+        type=str,
+        default=None,
+        help="The prompt to generate the video. This overrides the prompt_path if provided.",
+    )
+    parser.add_argument(
+        "--target_object",
+        type=str,
+        default=None,
+        help="A short description of the object to be tracked.",
+    )
+    parser.add_argument(
+        "--prompt_path",
+        type=str,
+        default="prompts/video_generation/prompts/sample_prompts.json",
+        help="The path to the video generation config file to use (if not using CLI)",
+    )
 
     # for debugging: control which contiguous sequence of steps to run
     # these are: ["videogeneration", "segmentation", "tracing", "pointclouds", "registration"]
-    parser.add_argument("--start-at", type=str, default="videogeneration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to start from.")
-    parser.add_argument("--end-at", type=str, default="registration", choices=["videogeneration", "segmentation", "tracing", "pointclouds", "registration"], help="The step to end at.")
-    
+    parser.add_argument(
+        "--start-at",
+        type=str,
+        default="videogeneration",
+        choices=[
+            "videogeneration",
+            "segmentation",
+            "tracing",
+            "pointclouds",
+            "registration",
+        ],
+        help="The step to start from.",
+    )
+    parser.add_argument(
+        "--end-at",
+        type=str,
+        default="registration",
+        choices=[
+            "videogeneration",
+            "segmentation",
+            "tracing",
+            "pointclouds",
+            "registration",
+        ],
+        help="The step to end at.",
+    )
+
+    parser.add_argument(
+        "--reg-method",
+        choices=REG_METHODS.keys(),
+        type=str,
+        default="diffusionreg",
+        help="Select the point-cloud registration backend.",
+    )
+
     args = parser.parse_args()
 
     if args.video_prompt is not None:
-        assert args.target_object is not None, "Error: Target object is required when video prompt is provided."
+        assert (
+            args.target_object is not None
+        ), "Error: Target object is required when video prompt is provided."
 
     runs = None
     if args.video_prompt is None and args.prompt_path:
@@ -69,13 +140,25 @@ def main():
         except Exception as e:
             # if doesn't exist, try to see if the args.run_name output exists previously
             if os.path.exists(os.path.join("results", args.run_name)):
-                metadata = os.path.join("results", args.run_name, "1_video", "metadata.json")
-                with open(metadata, 'r') as f:
+                metadata = os.path.join(
+                    "results", args.run_name, "1_video", "metadata.json"
+                )
+                with open(metadata, "r") as f:
                     meta = json.load(f)
                 # read prompt information from existing metadata
-                runs = { args.run_name: { "prompt": meta['prompt'], "target_object": meta['target_object'] } }
+                runs = {
+                    args.run_name: {
+                        "prompt": meta["prompt"],
+                        "target_object": meta["target_object"],
+                    }
+                }
     else:
-        runs = { args.run_name: { "prompt": args.video_prompt, "target_object": args.target_object } }
+        runs = {
+            args.run_name: {
+                "prompt": args.video_prompt,
+                "target_object": args.target_object,
+            }
+        }
 
     # create and run pipeline(s)
     for run_key, run_data in runs.items():
@@ -88,28 +171,39 @@ def main():
 
         pipeline = create_pipeline(f"{args.run_name}_{run_key}", args)
         start_component, end_component = get_partial_run_range_for_debug(pipeline, args)
-        start_component = start_component if start_component is not None else "videogeneration"
+        start_component = (
+            start_component if start_component is not None else "videogeneration"
+        )
         end_component = end_component if end_component is not None else "registration"
         pipeline.run(start_at=start_component, end_at=end_component)
 
 
 # === Helpers ==== #
-def get_partial_run_range_for_debug(pipeline: Pipeline, args: argparse.Namespace) -> tuple[str, str]:
+def get_partial_run_range_for_debug(
+    pipeline: Pipeline, args: argparse.Namespace
+) -> tuple[str, str]:
     all_component_short_names = [c.short_name for c in pipeline.components]
-    
+
     start_step_arg = args.start_at.lower()
     end_step_arg = args.end_at.lower()
 
-    start_component = next((name for name in all_component_short_names if name.startswith(start_step_arg)), None)
-    end_component = next((name for name in all_component_short_names if name.startswith(end_step_arg)), None)
-    
+    start_component = next(
+        (name for name in all_component_short_names if name.startswith(start_step_arg)),
+        None,
+    )
+    end_component = next(
+        (name for name in all_component_short_names if name.startswith(end_step_arg)),
+        None,
+    )
+
     if not start_component or not end_component:
-        print(f"Error: Could not match provided start/end components ('{args.start_at}', '{args.end_at}') to available components.")
+        print(
+            f"Error: Could not match provided start/end components ('{args.start_at}', '{args.end_at}') to available components."
+        )
         print(f"Available names: {all_component_short_names}")
         return None, None
     return start_component, end_component
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
