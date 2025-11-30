@@ -248,18 +248,24 @@ def run(args, max_frames_per_chunk=40):
     _pretty("✅ model ready")
 
     # iterate scenes
-    for scene in sorted(os.listdir(base_in)):
-        in_dir = os.path.join(base_in, scene)
-        if not os.path.isdir(in_dir):
-            continue
-        out_dir = os.path.join(base_out, scene)
+    # for scene in sorted(os.listdir(base_in)):
+    # NOTE (Alexiy): REALLY BAD CODE - just to get things working
+    for _ in [1]:
+        if False:
+            in_dir = os.path.join(base_in, scene)
+            if not os.path.isdir(in_dir):
+                continue
+            in_dir = base_in
+            out_dir = os.path.join(base_out, scene)
+        in_dir = base_in
+        out_dir = base_out
         masks_dir = os.path.join(out_dir, "masks")
         images_dir = os.path.join(out_dir, "images")
         os.makedirs(out_dir, exist_ok=True)
         os.makedirs(masks_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
 
-        _pretty(f"\n📂 Scene: {scene}")
+        # _pretty(f"\n📂 Scene: {scene}")
         _pretty("🖼️  loading images …")
         # Images loaded to CPU
         views, total_frames = _load_images_with_original_indices(in_dir)

@@ -35,7 +35,8 @@ class TraceAnythingTracer(PointTracer):
         torch.cuda.empty_cache()
 
         print("\n--- Running Trace Anything ---")
-        frames_base_dir = os.path.dirname(self.context.paths["frames_scene_dir"])
+        # frames_base_dir = os.path.dirname(self.context.paths["frames_scene_dir"])
+        frames_base_dir = self.context.paths["frames_scene_dir"]
         if not os.path.exists(frames_base_dir) or not os.listdir(frames_base_dir):
             raise FileNotFoundError(f"Frames directory not found or is empty: {frames_base_dir}.")
 

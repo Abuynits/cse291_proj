@@ -24,8 +24,10 @@ class PointCloudExtraction(PipelineComponent):
         return "pointclouds"
 
     def run(self):
-        scene_dir_name = f"{self.context.run_name}_scene"
-        trace_output_file = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
+        if False:
+            scene_dir_name = f"{self.context.run_name}_scene"
+            trace_output_file = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
+        trace_output_file = os.path.join(self.context.paths["trace_output_dir"], 'output.pt')
         
         if not os.path.exists(trace_output_file):
             raise FileNotFoundError(f"Trace Anything output file not found: {trace_output_file}.")

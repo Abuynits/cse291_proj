@@ -3,7 +3,8 @@ from .video_generation import VideoGeneration, Wan2_1VideoGenerator
 from .segmentation import Segmentation, SAM2Segmenter
 from .tracing import PointTracer, TraceAnythingTracer
 from .pointcloud_extraction import PointCloudExtraction
-from .registration import Registration, DiffusionReg
+from .sam3d_registration import Registration, DiffusionReg
+# from .registration import Registration, DiffusionReg
 
 __all__ = [
     "Pipeline", "PipelineContext", "PipelineComponent",

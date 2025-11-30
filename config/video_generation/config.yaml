@@ -26,7 +26,7 @@ video:
   guidance_scale: 5.0
 
 paths:
-  prompts_path: "${hydra:runtime.cwd}/prompts/video_generation/prompts/sample_prompts.json"
+  prompts_path: "${hydra:runtime.cwd}/prompts/video_generation/prompts/benchmark.json"
   output_dir: "${hydra:runtime.cwd}/results/video_generation"
   output_prefix: "wan_video"
 

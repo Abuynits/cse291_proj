@@ -19,8 +19,11 @@ class PipelineContext:
         paths["generated_video_path"] = os.path.join(paths["video_output_folder"], "video.mp4")
         
         frames_base_dir = os.path.join(paths["main_output_dir"], "2_frames")
-        scene_dir_name = f"{run_name}_scene"
-        paths["frames_scene_dir"] = os.path.join(frames_base_dir, scene_dir_name)
+        if False:
+            # scene_dir_name = f"{run_name}_scene"
+            paths["frames_scene_dir"] = os.path.join(frames_base_dir, scene_dir_name)
+            paths["frames_scene_dir"] = os.path.join(paths["main_output_dir"], "2_frames")
+        paths['frames_scene_dir'] = frames_base_dir
         
         paths["masks_dir"] = os.path.join(paths["main_output_dir"], "3_masks")
         paths["overlaid_masks_dir"] = os.path.join(paths["main_output_dir"], "3_masks_overlaid")
@@ -32,7 +35,7 @@ class PipelineContext:
             if key.endswith("dir") or key.endswith("folder"):
                 os.makedirs(path, exist_ok=True)
         
-        os.makedirs(os.path.join(paths["trace_output_dir"], scene_dir_name), exist_ok=True)
+        # os.makedirs(os.path.join(paths["trace_output_dir"], scene_dir_name), exist_ok=True)
 
         return paths
 
