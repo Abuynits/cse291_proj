@@ -243,30 +243,24 @@ def run(args, max_frames_per_chunk=40):
 
     # config & model
     cfg = _load_cfg(args.config)
-    _pretty("🔧 loading model …")
+    _pretty("🔧 loading model...")
     model = _build_model_from_cfg(cfg, ckpt_path=args.ckpt, device=device)
     _pretty("✅ model ready")
 
     # iterate scenes
-    # for scene in sorted(os.listdir(base_in)):
-    # NOTE (Alexiy): REALLY BAD CODE - just to get things working
-    for _ in [1]:
-        if False:
-            in_dir = os.path.join(base_in, scene)
-            if not os.path.isdir(in_dir):
-                continue
-            in_dir = base_in
-            out_dir = os.path.join(base_out, scene)
-        in_dir = base_in
-        out_dir = base_out
+    for scene in sorted(os.listdir(base_in)):
+        in_dir = os.path.join(base_in, scene)
+        if not os.path.isdir(in_dir):
+            continue
+        out_dir = os.path.join(base_out, scene)
         masks_dir = os.path.join(out_dir, "masks")
         images_dir = os.path.join(out_dir, "images")
         os.makedirs(out_dir, exist_ok=True)
         os.makedirs(masks_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
 
-        # _pretty(f"\n📂 Scene: {scene}")
-        _pretty("🖼️  loading images …")
+        _pretty(f"\n📂 Scene: {scene}")
+        _pretty("🖼️  loading images...")
         # Images loaded to CPU
         views, total_frames = _load_images_with_original_indices(in_dir)
         _pretty(f"🧮 {len(views)} views loaded (total frames: {total_frames})")
@@ -277,7 +271,7 @@ def run(args, max_frames_per_chunk=40):
         # Determine chunking
         if len(views) <= max_frames_per_chunk:
             # --- Single Batch Path ---
-            _pretty("🚀 inference (single batch) …")
+            _pretty("🚀 inference (single batch)...")
             
             # Must move to GPU for the model
             views_gpu = []
@@ -286,10 +280,19 @@ def run(args, max_frames_per_chunk=40):
                     "img": v["img"].to(device),
                     "time_step": v["time_step"]
                 })
-
-            preds = _process_chunk(model, views_gpu, 0, 1)
             
-            all_preds = preds
+            preds = _process_chunk(model, views_gpu, 0, 1)
+
+            # Annotate predictions with global frame and chunk metadata
+            annotated_preds = []
+            for local_idx, (pred, view) in enumerate(zip(preds, views)):
+                pred["original_idx"] = view.get("original_idx", local_idx)
+                pred["chunk_idx"] = 0
+                pred["chunk_frame_idx"] = local_idx
+                pred["chunk_start_idx"] = 0
+                annotated_preds.append(pred)
+            
+            all_preds = annotated_preds
             all_views_cpu = views
             
             # Cleanup
@@ -299,7 +302,7 @@ def run(args, max_frames_per_chunk=40):
         else:
             # --- Chunked Path ---
             num_chunks = (len(views) + max_frames_per_chunk - 1) // max_frames_per_chunk
-            _pretty(f"🚀 inference (chunked: {num_chunks} chunks, max {max_frames_per_chunk} frames/chunk) …")
+            _pretty(f"🚀 inference (chunked: {num_chunks} chunks, max {max_frames_per_chunk} frames/chunk)...")
             
             for chunk_idx in range(num_chunks):
                 start_idx = chunk_idx * max_frames_per_chunk
@@ -318,6 +321,13 @@ def run(args, max_frames_per_chunk=40):
                 
                 # Inference
                 preds_chunk = _process_chunk(model, views_chunk_gpu, chunk_idx, num_chunks)
+
+                # Annotate predictions in this chunk with global frame and chunk metadata
+                for local_idx, (pred, view) in enumerate(zip(preds_chunk, views_chunk_raw)):
+                    pred["original_idx"] = view.get("original_idx", start_idx + local_idx)
+                    pred["chunk_idx"] = chunk_idx
+                    pred["chunk_frame_idx"] = local_idx
+                    pred["chunk_start_idx"] = start_idx
                 
                 # Store results (already CPU safe from _process_chunk)
                 all_preds.extend(preds_chunk)
@@ -332,7 +342,7 @@ def run(args, max_frames_per_chunk=40):
             _pretty(f"✅ all chunks done | processed {total_time} frames total")
 
         # ---- compute + save FG masks and images ----
-        _pretty("🧪 computing FG masks + saving frames …")
+        _pretty("🧪 computing FG masks + saving frames...")
         for i, (pred, view) in enumerate(zip(all_preds, all_views_cpu)):
             # variance map over control points (K), mean over xyz -> [H,W]
             ctrl_pts3d = pred["ctrl_pts3d"] # pointclouds
@@ -351,17 +361,21 @@ def run(args, max_frames_per_chunk=40):
             img_uint8 = np.clip(img_np, 0, 255).astype(np.uint8)
             cv2.imwrite(os.path.join(images_dir, f"{original_idx:03d}.png"), cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR))
 
-            # trim heavy intermediates
+            # trim off heavy intermediates
+            # these are technically the points that we need, but we can't save them to GPU due to memory constraints
+            # best to build these from sampling the B-spline.
             pred.pop("track_pts3d", None)
             pred.pop("track_conf", None)
 
+        # ! no longer do this as it can destroy the correspondence to the local chunked run
+        # ! this does however somewhat break visualization
         # Update time field in predictions to use full-sequence time_step from views
         # This ensures that chunked processing uses correct full-sequence times (0-1 across all frames)
         # instead of chunk-normalized times (0-1 within each chunk)
-        for pred, view in zip(all_preds, all_views_cpu):
-            if "time" in pred:
-                # Overwrite chunk-normalized time with full-sequence time_step
-                pred["time"] = view["time_step"]
+        # for pred, view in zip(all_preds, all_views_cpu):
+        #     if "time" in pred:
+        #         # Overwrite chunk-normalized time with full-sequence time_step
+        #         pred["time"] = view["time_step"]
 
         # Create views list without extra metadata for saving
         views_for_save = [{"img": v["img"], "time_step": v["time_step"]} for v in all_views_cpu]

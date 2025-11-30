@@ -19,11 +19,8 @@ class PipelineContext:
         paths["generated_video_path"] = os.path.join(paths["video_output_folder"], "video.mp4")
         
         frames_base_dir = os.path.join(paths["main_output_dir"], "2_frames")
-        if False:
-            # scene_dir_name = f"{run_name}_scene"
-            paths["frames_scene_dir"] = os.path.join(frames_base_dir, scene_dir_name)
-            paths["frames_scene_dir"] = os.path.join(paths["main_output_dir"], "2_frames")
-        paths['frames_scene_dir'] = frames_base_dir
+        scene_dir_name = f"{os.path.basename(run_name)}_scene"
+        paths["frames_scene_dir"] = os.path.join(frames_base_dir, scene_dir_name)
         
         paths["masks_dir"] = os.path.join(paths["main_output_dir"], "3_masks")
         paths["overlaid_masks_dir"] = os.path.join(paths["main_output_dir"], "3_masks_overlaid")
@@ -35,7 +32,7 @@ class PipelineContext:
             if key.endswith("dir") or key.endswith("folder"):
                 os.makedirs(path, exist_ok=True)
         
-        # os.makedirs(os.path.join(paths["trace_output_dir"], scene_dir_name), exist_ok=True)
+        os.makedirs(os.path.join(paths["trace_output_dir"], scene_dir_name), exist_ok=True)
 
         return paths
 
@@ -64,11 +61,22 @@ class Pipeline:
         self.context = context
         self.components: List[PipelineComponent] = []
 
-    def add_component(self, component_class: type):
+    def add_component(self, component_class: type[PipelineComponent]):
         """Adds a component to the pipeline."""
         self.components.append(component_class(self.context))
 
-    def run(self, start_at: str, end_at: str):
+    def get_components_in_range(self, start_at: str, end_at: str) -> list[str]:
+        all_names = [c.short_name for c in self.components]
+        try:
+            start_index = all_names.index(start_at)
+            end_index = all_names.index(end_at)
+            if start_index > end_index:
+                return []
+            return all_names[start_index : end_index + 1]
+        except ValueError:
+            return []
+
+    def run(self, start_at: str = None, end_at: str = None):
         """Runs the pipeline from the specified start to end components."""
         all_component_names = [component.short_name for component in self.components]
 
@@ -91,7 +99,12 @@ class Pipeline:
 
         for component in components_to_run:
             print(f"\n--- Running Component: {component.name} ---")
-            component.run()
+            try:
+                component.run()
+            except Exception as e:
+                print(f"Error: Failed to run component '{component.name}': {e}")
+                print(f"  - Stopping pipeline execution.")
+                return
 
         print("\nPipeline finished successfully!")
         final_output = self.context.paths.get(f"{end_at}_output_dir", self.context.paths["main_output_dir"])
