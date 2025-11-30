@@ -54,6 +54,7 @@ def main():
     
     parser.add_argument("--box_threshold", type=float, default=0.4, help="The confidence threshold for bounding box detection.")
     parser.add_argument("--text_threshold", type=float, default=0.3, help="The confidence threshold for text matching.")
+    parser.add_argument("--step_size", type=int, default=1, help="The number of frames between registered point clouds (point registrations).")
     
     args = parser.parse_args()
 
