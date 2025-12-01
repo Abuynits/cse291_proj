@@ -48,6 +48,9 @@ def process_video(video_path: Path, target_object: str, start_at: str, end_at: s
             else:
                 target_object = subject_name
         
+        # NOTE (Alexiy): sam2 needs objects with a period at the end
+        if '.' not in target_object:
+            target_object = f'{target_object}.'
         print(f"\n--- Preparing to process video: {video_path.name} ---")
         print(f"  - Run Name: {run_name}")
         print(f"  - Target Object: {target_object}")

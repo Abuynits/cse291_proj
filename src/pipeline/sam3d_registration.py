@@ -74,10 +74,10 @@ class DiffusionReg(Registration):
     def run(self):
         print("--- Registering Point Clouds with DiffusionReg ---")
         
-        if False:
-            scene_dir_name = f"{self.context.run_name}_scene"
-            trace_output_file = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
+        scene_dir_name = f"{self.context.run_name}_scene"
+        # trace_output_files = os.path.join(self.context.paths["trace_output_dir"], scene_dir_name, "output.pt")
         trace_output_files = os.path.join(self.context.paths["trace_output_dir"])
+        trace_output_files = os.path.join(trace_output_files, scene_dir_name)
         num_frames = len([f for f in os.listdir(trace_output_files) if f.endswith('.npy')])
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -156,6 +156,21 @@ class DiffusionReg(Registration):
         # p_t_plus_1_average = np.mean(pcd_t_plus_1_reg, axis=0)
         # delta = np.linalg.norm(p_t_average - p_t_plus_1_average)
 
+        pcd_t_reg_pts = pcd_t_reg[:, :3]
+        pcd_t_plus_1_reg_pts = pcd_t_plus_1_reg[:, :3]
+        # extract min, max for each dimenion
+        min = np.min(np.stack((np.min(pcd_t_plus_1_reg_pts, axis=0), np.min(pcd_t_reg_pts, axis=0))), axis=0)
+        max = np.max(np.stack((np.max(pcd_t_plus_1_reg_pts, axis=0), np.max(pcd_t_reg_pts, axis=0))), axis=0)
+        pcd_t_reg_pts = (pcd_t_reg_pts - min) / (max - min)
+        pcd_t_plus_1_reg_pts = (pcd_t_plus_1_reg_pts - min) / (max - min)
+
+        # normalize color to 255.
+        pcd_t_reg_color = pcd_t_reg[:, 3:] / 255.
+        pcd_t_plus_1_reg_color = pcd_t_plus_1_reg[:, 3:] / 255.
+
+        pcd_t_reg = np.hstack((pcd_t_reg_pts, pcd_t_reg_color))
+        pcd_t_plus_1_reg = np.hstack((pcd_t_plus_1_reg_pts, pcd_t_plus_1_reg_color))
+
         absolute_error = chamfer_distance(pcd_t_reg, pcd_t_plus_1_reg)# / delta
         # emd_error = emd_distance(pcd_t_reg, transformed_points)
 
@@ -171,13 +186,14 @@ class DiffusionReg(Registration):
         if registration_errors:
             abs_errors = [e['absolute_error'] for e in registration_errors]
             # now remove outliers beyond 1.5 * IQR
-            Q1 = np.percentile(abs_errors, 25)
-            Q3 = np.percentile(abs_errors, 75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            filtered_errors = [e for e in registration_errors if lower_bound <= e['absolute_error'] <= upper_bound]
-            abs_errors = [e['absolute_error'] for e in filtered_errors]
+            if False:
+                Q1 = np.percentile(abs_errors, 25)
+                Q3 = np.percentile(abs_errors, 75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                filtered_errors = [e for e in registration_errors if lower_bound <= e['absolute_error'] <= upper_bound]
+                abs_errors = [e['absolute_error'] for e in filtered_errors]
             avg_absolute_error = np.mean(abs_errors)
             # avg_emd_error = np.mean([e['emd_error'] for e in registration_errors])
             error_summary = {
